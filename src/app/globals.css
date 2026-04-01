@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Lato:wght@300;400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold:         #D4AF37;
+  --gold-dark:    #B8960C;
+  --gold-light:   #F5E9B0;
+  --cream:        #FDF8EC;
+  --cream-2:      #FAF6EE;
+  --cream-3:      #F3EDD8;
+  --charcoal:     #1A1612;
+  --charcoal-mid: #6B5F57;
+  --rose:         #BE6B7A;
+  --sage:         #7A9E85;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--cream);
+  color: var(--charcoal);
+  font-family: "Lato", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--cream-3); }
+::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 3px; }
+
+/* Gold focus rings */
+*:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Schedule grid cell hover */
+.slot-cell:hover { background: rgba(212, 175, 55, 0.06); }
+
+/* Booking card drag */
+.booking-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+/* Status badge colors */
+.status-tentative  { background: #FEF3C7; color: #92400E; }
+.status-confirmed  { background: #D1FAE5; color: #065F46; }
+.status-ongoing    { background: #DBEAFE; color: #1E40AF; }
+.status-done       { background: #F3F4F6; color: #374151; }
+.status-cancelled  { background: #FEE2E2; color: #991B1B; }
