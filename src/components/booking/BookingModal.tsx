@@ -245,7 +245,7 @@ export default function BookingModal() {
           </div>
 
           <div>
-            <label className={labelCls}>Notes <span className="text-[var(--charcoal-mid)] normal-case tracking-normal font-normal">(optional, max 100)</span></label>
+            <label className={labelCls}>Notes <span className="text-[var(--charcoal-mid)] normal-case tracking-normal font-normal">(optional)</span></label>
             <textarea value={notes} onChange={e => { setNotes(e.target.value); setErrors(v => ({ ...v, notes: "" })); }}
               rows={2} maxLength={100} className={cn(inputCls, "resize-none", errors.notes && "border-red-400 bg-red-50")}
               placeholder="Any additional notes…" />
