@@ -62,5 +62,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json(booking, { status: 201 });
+  // Re-fetch with full joins so the client gets room + booking_services + staff in one shot
+  const { data: full } = await supabase
+    .from("bookings")
+    .select("*, room:rooms(*), booking_services(*, staff:staff(*))")
+    .eq("id", booking.id)
+    .single();
+
+  return NextResponse.json(full ?? booking, { status: 201 });
 }
