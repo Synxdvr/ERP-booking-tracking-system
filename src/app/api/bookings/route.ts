@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { checkConflict } from "@/lib/conflict";
-import { Booking, CreateBookingPayload } from "@/types";
+import { Booking, CreateBookingPayload, Room } from "@/types";
 
 export async function GET(req: NextRequest) {
   const supabase = createClient();
@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
 
   const body: CreateBookingPayload = await req.json();
 
+  // Fetch rooms for capacity check
+  const { data: rooms } = await supabase.from("rooms").select("*");
+
   // Fetch existing bookings for conflict check
   const { data: existing } = await supabase
     .from("bookings")
@@ -35,7 +38,8 @@ export async function POST(req: NextRequest) {
 
   const conflict = checkConflict(
     { date: body.date, booked_slot: body.booked_slot, room_id: body.room_id, staff_ids: body.services.map(s => s.staff_id) },
-    (existing ?? []) as Booking[]
+    (existing ?? []) as Booking[],
+    (rooms ?? []) as Room[]
   );
   if (conflict.hasConflict) {
     return NextResponse.json({ error: conflict.conflictDetail, conflictType: conflict.conflictType }, { status: 409 });
@@ -52,7 +56,6 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Insert services
   if (body.services.length > 0) {
     await supabase.from("booking_services").insert(
       body.services.map(s => ({ booking_id: booking.id, staff_id: s.staff_id, service_name: s.service_name }))
