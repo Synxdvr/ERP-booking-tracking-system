@@ -1,8 +1,10 @@
-import { Booking, ConflictResult, TimeSlot } from "@/types";
+import { Booking, ConflictResult, Room, TimeSlot } from "@/types";
 
 /**
- * Checks if a new booking conflicts with existing ones.
- * Conflict = same date + same time slot + (same room OR same staff member).
+ * Room conflict only triggers when the number of existing bookings
+ * in that room at that slot equals or exceeds the room's capacity.
+ * e.g. Nails Area (capacity=5) allows up to 5 simultaneous bookings.
+ * Staff conflict triggers if the same therapist is assigned elsewhere.
  */
 export function checkConflict(
   params: {
@@ -12,7 +14,8 @@ export function checkConflict(
     staff_ids: string[];
     exclude_booking_id?: string;
   },
-  existingBookings: Booking[]
+  existingBookings: Booking[],
+  rooms: Room[]
 ): ConflictResult {
   const candidates = existingBookings.filter(
     (b) =>
@@ -22,22 +25,26 @@ export function checkConflict(
       b.id !== params.exclude_booking_id
   );
 
-  // Room conflict
-  const roomConflict = candidates.find((b) => b.room_id === params.room_id);
-  if (roomConflict) {
+  // Room conflict — respect capacity
+  const room = rooms.find((r) => r.id === params.room_id);
+  const capacity = room?.capacity ?? 1;
+  const roomBookings = candidates.filter((b) => b.room_id === params.room_id);
+
+  if (roomBookings.length >= capacity) {
     return {
       hasConflict: true,
       conflictType: "room",
-      conflictDetail: `Room already booked for ${roomConflict.client_name} at this time.`,
+      conflictDetail: `${room?.name ?? "Room"} is fully booked at this time (${capacity} of ${capacity} ${capacity === 1 ? "bed" : capacity >= 5 ? "chairs" : "beds"} taken).`,
     };
   }
 
-  // Staff conflict
+  // Staff conflict — same therapist can't be in two places at once
   for (const booking of candidates) {
     const existingStaffIds = (booking.booking_services ?? []).map((s) => s.staff_id);
     const overlap = params.staff_ids.find((id) => existingStaffIds.includes(id));
     if (overlap) {
-      const staffName = booking.booking_services?.find((s) => s.staff_id === overlap)?.staff?.name ?? overlap;
+      const staffName =
+        booking.booking_services?.find((s) => s.staff_id === overlap)?.staff?.name ?? overlap;
       return {
         hasConflict: true,
         conflictType: "staff",
