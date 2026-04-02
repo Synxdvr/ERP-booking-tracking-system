@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { checkConflict } from "@/lib/conflict";
-import { Booking, UpdateBookingPayload } from "@/types";
+import { Booking, Room, UpdateBookingPayload } from "@/types";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -11,16 +11,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const body: UpdateBookingPayload = await req.json();
   const { id } = params;
 
-  // If slot/room/services are changing, re-check conflicts
   if (body.booked_slot || body.room_id || body.services) {
     const { data: current } = await supabase.from("bookings").select("*, booking_services(staff_id)").eq("id", id).single();
     if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const checkDate  = body.date       ?? current.date;
+    const checkDate  = body.date        ?? current.date;
     const checkSlot  = body.booked_slot ?? current.booked_slot;
-    const checkRoom  = body.room_id    ?? current.room_id;
+    const checkRoom  = body.room_id     ?? current.room_id;
     const checkStaff = body.services?.map(s => s.staff_id) ?? current.booking_services.map((s: { staff_id: string }) => s.staff_id);
 
+    const { data: rooms }    = await supabase.from("rooms").select("*");
     const { data: existing } = await supabase
       .from("bookings")
       .select("*, booking_services(staff_id, staff:staff(name))")
@@ -28,7 +28,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const conflict = checkConflict(
       { date: checkDate, booked_slot: checkSlot, room_id: checkRoom, staff_ids: checkStaff, exclude_booking_id: id },
-      (existing ?? []) as Booking[]
+      (existing ?? []) as Booking[],
+      (rooms ?? []) as Room[]
     );
     if (conflict.hasConflict) {
       return NextResponse.json({ error: conflict.conflictDetail, conflictType: conflict.conflictType }, { status: 409 });
@@ -37,7 +38,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const { services, ...bookingFields } = body;
 
-  // Update booking row
   const { data: updated, error } = await supabase
     .from("bookings")
     .update({ ...bookingFields, updated_by: user.id, updated_at: new Date().toISOString() })
@@ -47,7 +47,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Replace services if provided
   if (services !== undefined) {
     await supabase.from("booking_services").delete().eq("booking_id", id);
     if (services.length > 0) {
