@@ -49,12 +49,16 @@ export default function BookingModal() {
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!clientName.trim())         e.clientName = "Client name is required.";
-    if (!roomId)                     e.roomId     = "Please select a room.";
-    if (services.length === 0)       e.services   = "At least one therapist assignment is required.";
+    if (!clientName.trim())              e.clientName = "Client name is required.";
+    else if (clientName.trim().length <= 1) e.clientName = "Name is invalid";
+    else if (clientName.length > 50)    e.clientName = "Too much character";
+    if (!roomId)                          e.roomId     = "Please select a room.";
+    if (notes.length > 100)               e.notes      = "Notes must be 100 characters or fewer.";
+    if (services.length === 0)            e.services   = "At least one therapist assignment is required.";
     services.forEach((svc, i) => {
-      if (!svc.staff_id)            e[`staff_${i}`]   = "Select a therapist.";
-      if (!svc.service_name.trim()) e[`service_${i}`] = "Enter a service.";
+      if (!svc.staff_id)                  e[`staff_${i}`]   = "Select a therapist.";
+      if (!svc.service_name.trim())       e[`service_${i}`] = "Enter a service.";
+      else if (svc.service_name.length > 50) e[`service_${i}`] = "Max 50 characters.";
     });
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -133,6 +137,7 @@ export default function BookingModal() {
               onChange={e => { setClientName(e.target.value); setErrors(v => ({ ...v, clientName: "" })); }}
               className={cn(inputCls, errors.clientName && "border-red-400 bg-red-50")}
               placeholder="e.g. Maria Santos"
+              maxLength={50}
             />
             {errors.clientName && <p className="text-red-500 text-[10px] mt-1">{errors.clientName}</p>}
           </div>
@@ -226,6 +231,7 @@ export default function BookingModal() {
                       value={svc.service_name}
                       onChange={e => updateService(i, "service_name", e.target.value)}
                       placeholder="e.g. FACIAL/WARTS"
+                      maxLength={50}
                       className={cn(inputCls, errors[`service_${i}`] && "border-red-400 bg-red-50")}
                     />
                     {errors[`service_${i}`] && <p className="text-red-500 text-[10px] mt-0.5">{errors[`service_${i}`]}</p>}
@@ -238,11 +244,17 @@ export default function BookingModal() {
             </div>
           </div>
 
-          {/* Notes */}
           <div>
-            <label className={labelCls}>Notes (optional)</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)}
-              rows={2} className={cn(inputCls, "resize-none")} placeholder="Any additional notes…" />
+            <label className={labelCls}>Notes <span className="text-[var(--charcoal-mid)] normal-case tracking-normal font-normal">(optional, max 100)</span></label>
+            <textarea value={notes} onChange={e => { setNotes(e.target.value); setErrors(v => ({ ...v, notes: "" })); }}
+              rows={2} maxLength={100} className={cn(inputCls, "resize-none", errors.notes && "border-red-400 bg-red-50")}
+              placeholder="Any additional notes…" />
+            <div className="flex justify-between mt-0.5">
+              {errors.notes
+                ? <p className="text-red-500 text-[10px]">{errors.notes}</p>
+                : <span />}
+              <p className="text-[10px] text-[var(--charcoal-mid)]">{notes.length}/100</p>
+            </div>
           </div>
 
           {/* Audit trail */}
