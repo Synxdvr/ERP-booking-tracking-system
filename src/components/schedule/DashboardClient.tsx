@@ -34,7 +34,8 @@ export default function DashboardClient() {
     const staffIds = (booking.booking_services ?? []).map(s => s.staff_id);
     const conflict = checkConflict(
       { date: booking.date, booked_slot: newSlot as TimeSlot, room_id: newRoomId, staff_ids: staffIds, exclude_booking_id: booking.id },
-      bookings
+      bookings,
+      rooms
     );
     if (conflict.hasConflict) {
       alert(`⚠️ Conflict: ${conflict.conflictDetail}`);
