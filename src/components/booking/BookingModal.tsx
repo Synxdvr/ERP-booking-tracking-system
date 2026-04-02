@@ -9,19 +9,21 @@ import { cn } from "@/lib/utils";
 const STATUSES: BookingStatus[] = ["tentative", "confirmed", "ongoing", "done", "cancelled"];
 
 export default function BookingModal() {
-  const { modalOpen, closeModal, editingBooking, draftSlot, selectedDate, rooms, staff, upsertBooking, removeBooking } = useScheduleStore();
+  const { modalOpen, closeModal, editingBooking, draftSlot, selectedDate, rooms, staff, upsertBooking, removeBooking } =
+    useScheduleStore();
 
-  const [clientName, setClientName]   = useState("");
-  const [roomId, setRoomId]           = useState("");
-  const [slot, setSlot]               = useState<TimeSlot>("11AM-12NN");
-  const [status, setStatus]           = useState<BookingStatus>("confirmed");
-  const [timeStarted, setTimeStarted] = useState("");
+  const [clientName,   setClientName]   = useState("");
+  const [roomId,       setRoomId]       = useState("");
+  const [slot,         setSlot]         = useState<TimeSlot>("11AM-12NN");
+  const [status,       setStatus]       = useState<BookingStatus>("confirmed");
+  const [timeStarted,  setTimeStarted]  = useState("");
   const [timeFinished, setTimeFinished] = useState("");
-  const [notes, setNotes]             = useState("");
-  const [services, setServices]       = useState<{ staff_id: string; service_name: string }[]>([]);
-  const [error, setError]             = useState("");
-  const [saving, setSaving]           = useState(false);
-  const [deleting, setDeleting]       = useState(false);
+  const [notes,        setNotes]        = useState("");
+  const [services,     setServices]     = useState<{ staff_id: string; service_name: string }[]>([]);
+  const [errors,       setErrors]       = useState<Record<string, string>>({});
+  const [apiError,     setApiError]     = useState("");
+  const [saving,       setSaving]       = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -37,17 +39,30 @@ export default function BookingModal() {
     } else {
       setClientName(""); setRoomId(draftSlot?.room_id ?? rooms[0]?.id ?? "");
       setSlot((draftSlot?.slot as TimeSlot) ?? "11AM-12NN");
-      setStatus("confirmed"); setTimeStarted(""); setTimeFinished(""); setNotes(""); setServices([]);
+      setStatus("confirmed"); setTimeStarted(""); setTimeFinished(""); setNotes("");
+      setServices([{ staff_id: staff[0]?.id ?? "", service_name: "" }]);
     }
-    setError("");
+    setErrors({}); setApiError("");
   }, [modalOpen, editingBooking, draftSlot]);
 
   if (!modalOpen) return null;
 
+  function validate() {
+    const e: Record<string, string> = {};
+    if (!clientName.trim())         e.clientName = "Client name is required.";
+    if (!roomId)                     e.roomId     = "Please select a room.";
+    if (services.length === 0)       e.services   = "At least one therapist assignment is required.";
+    services.forEach((svc, i) => {
+      if (!svc.staff_id)            e[`staff_${i}`]   = "Select a therapist.";
+      if (!svc.service_name.trim()) e[`service_${i}`] = "Enter a service.";
+    });
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  }
+
   async function handleSave() {
-    if (!clientName.trim()) { setError("Client name is required."); return; }
-    if (!roomId) { setError("Please select a room."); return; }
-    setSaving(true); setError("");
+    if (!validate()) return;
+    setSaving(true); setApiError("");
 
     const payload: CreateBookingPayload = {
       date: format(selectedDate, "yyyy-MM-dd"),
@@ -59,24 +74,24 @@ export default function BookingModal() {
       services,
     };
 
-    const url = editingBooking ? `/api/bookings/${editingBooking.id}` : "/api/bookings";
+    const url    = editingBooking ? `/api/bookings/${editingBooking.id}` : "/api/bookings";
     const method = editingBooking ? "PATCH" : "POST";
-
-    const body = editingBooking
+    const body   = editingBooking
       ? { ...payload, id: editingBooking.id, time_started: timeStarted || null, time_finished: timeFinished || null }
       : payload;
 
-    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res  = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json();
     setSaving(false);
 
-    if (!res.ok) { setError(data.error ?? "Something went wrong."); return; }
+    if (!res.ok) { setApiError(data.error ?? "Something went wrong."); return; }
     upsertBooking(data);
     closeModal();
   }
 
   async function handleDelete() {
     if (!editingBooking) return;
+    if (!confirm(`Delete booking for ${editingBooking.client_name}?`)) return;
     setDeleting(true);
     await fetch(`/api/bookings/${editingBooking.id}`, { method: "DELETE" });
     removeBooking(editingBooking.id);
@@ -84,16 +99,19 @@ export default function BookingModal() {
     closeModal();
   }
 
-  function addService() { setServices(s => [...s, { staff_id: staff[0]?.id ?? "", service_name: "" }]); }
+  function addService()  { setServices(s => [...s, { staff_id: staff[0]?.id ?? "", service_name: "" }]); }
+  function removeService(i: number) { setServices(s => s.filter((_, idx) => idx !== i)); }
   function updateService(i: number, field: "staff_id" | "service_name", val: string) {
     setServices(s => s.map((svc, idx) => idx === i ? { ...svc, [field]: val } : svc));
   }
-  function removeService(i: number) { setServices(s => s.filter((_, idx) => idx !== i)); }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
+    >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-slide-up">
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[var(--cream-3)]">
           <h2 className="font-serif text-xl text-[var(--charcoal)]">
@@ -106,85 +124,126 @@ export default function BookingModal() {
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
-          {/* Client name */}
-          <Field label="Client Name">
-            <input value={clientName} onChange={e => setClientName(e.target.value)}
-              className={inputCls} placeholder="e.g. Maria Santos" />
-          </Field>
 
-          {/* Slot + Room row */}
+          {/* Client name */}
+          <div>
+            <label className={labelCls}>Client Name <span className="text-red-400">*</span></label>
+            <input
+              value={clientName}
+              onChange={e => { setClientName(e.target.value); setErrors(v => ({ ...v, clientName: "" })); }}
+              className={cn(inputCls, errors.clientName && "border-red-400 bg-red-50")}
+              placeholder="e.g. Maria Santos"
+            />
+            {errors.clientName && <p className="text-red-500 text-[10px] mt-1">{errors.clientName}</p>}
+          </div>
+
+          {/* Slot + Room */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Time Slot">
+            <div>
+              <label className={labelCls}>Time Slot</label>
               <select value={slot} onChange={e => setSlot(e.target.value as TimeSlot)} className={inputCls}>
                 {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-            </Field>
-            <Field label="Room">
-              <select value={roomId} onChange={e => setRoomId(e.target.value)} className={inputCls}>
+            </div>
+            <div>
+              <label className={labelCls}>Room <span className="text-red-400">*</span></label>
+              <select
+                value={roomId}
+                onChange={e => { setRoomId(e.target.value); setErrors(v => ({ ...v, roomId: "" })); }}
+                className={cn(inputCls, errors.roomId && "border-red-400 bg-red-50")}
+              >
                 <option value="">Select room…</option>
-                {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {rooms.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} {r.capacity > 1 ? `(${r.capacity} ${r.capacity === 5 ? "chairs" : "beds"})` : ""}
+                  </option>
+                ))}
               </select>
-            </Field>
+              {errors.roomId && <p className="text-red-500 text-[10px] mt-1">{errors.roomId}</p>}
+            </div>
           </div>
 
           {/* Status */}
-          <Field label="Status">
+          <div>
+            <label className={labelCls}>Status</label>
             <div className="flex gap-2 flex-wrap">
               {STATUSES.map(s => (
                 <button key={s} onClick={() => setStatus(s)}
-                  className={cn("px-3 py-1 rounded-full text-xs capitalize border transition",
-                    status === s ? "bg-[var(--gold)] border-[var(--gold)] text-white" : "border-[var(--cream-3)] text-[var(--charcoal-mid)] hover:border-[var(--gold)]")}>
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs capitalize border transition",
+                    status === s
+                      ? "bg-[var(--gold)] border-[var(--gold)] text-white"
+                      : "border-[var(--cream-3)] text-[var(--charcoal-mid)] hover:border-[var(--gold)]"
+                  )}>
                   {s}
                 </button>
               ))}
             </div>
-          </Field>
-
-          {/* Actual times (optional) */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Time Started (optional)">
-              <input type="time" value={timeStarted} onChange={e => setTimeStarted(e.target.value)} className={inputCls} />
-            </Field>
-            <Field label="Time Finished (optional)">
-              <input type="time" value={timeFinished} onChange={e => setTimeFinished(e.target.value)} className={inputCls} />
-            </Field>
           </div>
 
-          {/* Services / therapists */}
+          {/* Actual times */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Time Started (optional)</label>
+              <input type="time" value={timeStarted} onChange={e => setTimeStarted(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Time Finished (optional)</label>
+              <input type="time" value={timeFinished} onChange={e => setTimeFinished(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          {/* Therapist assignments */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className={labelCls}>Therapist Assignments</label>
+              <label className={labelCls}>
+                Therapist Assignments <span className="text-red-400">*</span>
+              </label>
               <button onClick={addService}
-                className="flex items-center gap-1 text-xs text-[var(--gold)] hover:text-[var(--gold-dark)] transition">
+                className="flex items-center gap-1 text-xs text-[var(--gold)] hover:text-[var(--gold-dark)] transition font-medium">
                 <Plus size={12} /> Add
               </button>
             </div>
+
+            {errors.services && <p className="text-red-500 text-[10px] mb-2">{errors.services}</p>}
+
             <div className="space-y-2">
               {services.map((svc, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <select value={svc.staff_id} onChange={e => updateService(i, "staff_id", e.target.value)}
-                    className={cn(inputCls, "flex-shrink-0 w-32")}>
-                    <option value="">Staff…</option>
-                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                  <input value={svc.service_name} onChange={e => updateService(i, "service_name", e.target.value)}
-                    placeholder="e.g. FACIAL/WARTS" className={cn(inputCls, "flex-1")} />
-                  <button onClick={() => removeService(i)} className="p-1.5 hover:bg-red-50 rounded-lg transition">
+                <div key={i} className="flex gap-2 items-start">
+                  <div className="flex-shrink-0 w-32">
+                    <select
+                      value={svc.staff_id}
+                      onChange={e => updateService(i, "staff_id", e.target.value)}
+                      className={cn(inputCls, errors[`staff_${i}`] && "border-red-400 bg-red-50")}
+                    >
+                      <option value="">Staff…</option>
+                      {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    {errors[`staff_${i}`] && <p className="text-red-500 text-[10px] mt-0.5">{errors[`staff_${i}`]}</p>}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      value={svc.service_name}
+                      onChange={e => updateService(i, "service_name", e.target.value)}
+                      placeholder="e.g. FACIAL/WARTS"
+                      className={cn(inputCls, errors[`service_${i}`] && "border-red-400 bg-red-50")}
+                    />
+                    {errors[`service_${i}`] && <p className="text-red-500 text-[10px] mt-0.5">{errors[`service_${i}`]}</p>}
+                  </div>
+                  <button onClick={() => removeService(i)} className="p-2 hover:bg-red-50 rounded-lg transition mt-0.5">
                     <X size={12} className="text-red-400" />
                   </button>
                 </div>
               ))}
-              {services.length === 0 && (
-                <p className="text-xs text-[var(--charcoal-mid)] italic">No therapists assigned yet.</p>
-              )}
             </div>
           </div>
 
           {/* Notes */}
-          <Field label="Notes (optional)">
+          <div>
+            <label className={labelCls}>Notes (optional)</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)}
               rows={2} className={cn(inputCls, "resize-none")} placeholder="Any additional notes…" />
-          </Field>
+          </div>
 
           {/* Audit trail */}
           {editingBooking?.updated_at && (
@@ -193,11 +252,11 @@ export default function BookingModal() {
             </p>
           )}
 
-          {/* Error */}
-          {error && (
-            <div className="flex items-center gap-2 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg">
-              <AlertTriangle size={12} />
-              {error}
+          {/* API error */}
+          {apiError && (
+            <div className="flex items-center gap-2 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg border border-red-200">
+              <AlertTriangle size={12} className="flex-shrink-0" />
+              {apiError}
             </div>
           )}
         </div>
@@ -222,15 +281,6 @@ export default function BookingModal() {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className={labelCls}>{label}</label>
-      {children}
     </div>
   );
 }
