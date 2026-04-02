@@ -23,8 +23,18 @@ body {
   background: var(--cream);
   color: var(--charcoal);
   font-family: "Lato", system-ui, sans-serif;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Ensure labels and small text are never below 400 weight */
+label, p, span, td, th, input, select, textarea, button {
+  font-weight: inherit;
+}
+
+/* Bump xs/sm text to always be readable */
+.text-xs  { font-size: 0.75rem;  line-height: 1rem;    }
+.text-sm  { font-size: 0.875rem; line-height: 1.25rem; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -44,6 +54,14 @@ body {
 .booking-dragging {
   opacity: 0.5;
   cursor: grabbing;
+}
+
+/* Booking card text clamping */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* Status badge colors */
