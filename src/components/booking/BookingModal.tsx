@@ -5,6 +5,7 @@ import { BookingStatus, CreateBookingPayload, TIME_SLOTS, TimeSlot } from "@/typ
 import { format } from "date-fns";
 import { X, Trash2, Plus, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 const STATUSES: BookingStatus[] = ["tentative", "confirmed", "ongoing", "done", "cancelled"];
 
@@ -24,6 +25,7 @@ export default function BookingModal() {
   const [apiError,     setApiError]     = useState("");
   const [saving,       setSaving]       = useState(false);
   const [deleting,     setDeleting]     = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -95,11 +97,11 @@ export default function BookingModal() {
 
   async function handleDelete() {
     if (!editingBooking) return;
-    if (!confirm(`Delete booking for ${editingBooking.client_name}?`)) return;
     setDeleting(true);
     await fetch(`/api/bookings/${editingBooking.id}`, { method: "DELETE" });
     removeBooking(editingBooking.id);
     setDeleting(false);
+    setConfirmDelete(false);
     closeModal();
   }
 
@@ -110,9 +112,9 @@ export default function BookingModal() {
   }
 
   return (
-    <div
+    <><div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-      onClick={e => { if (e.target === e.currentTarget) closeModal(); }}
+      onClick={e => { if (e.target === e.currentTarget) closeModal(); } }
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-slide-up">
 
@@ -134,11 +136,10 @@ export default function BookingModal() {
             <label className={labelCls}>Client Name <span className="text-red-400">*</span></label>
             <input
               value={clientName}
-              onChange={e => { setClientName(e.target.value); setErrors(v => ({ ...v, clientName: "" })); }}
+              onChange={e => { setClientName(e.target.value); setErrors(v => ({ ...v, clientName: "" })); } }
               className={cn(inputCls, errors.clientName && "border-red-400 bg-red-50")}
               placeholder="e.g. Maria Santos"
-              maxLength={50}
-            />
+              maxLength={50} />
             {errors.clientName && <p className="text-red-500 text-[10px] mt-1">{errors.clientName}</p>}
           </div>
 
@@ -154,7 +155,7 @@ export default function BookingModal() {
               <label className={labelCls}>Room <span className="text-red-400">*</span></label>
               <select
                 value={roomId}
-                onChange={e => { setRoomId(e.target.value); setErrors(v => ({ ...v, roomId: "" })); }}
+                onChange={e => { setRoomId(e.target.value); setErrors(v => ({ ...v, roomId: "" })); } }
                 className={cn(inputCls, errors.roomId && "border-red-400 bg-red-50")}
               >
                 <option value="">Select room…</option>
@@ -232,8 +233,7 @@ export default function BookingModal() {
                       onChange={e => updateService(i, "service_name", e.target.value)}
                       placeholder="e.g. FACIAL/WARTS"
                       maxLength={50}
-                      className={cn(inputCls, errors[`service_${i}`] && "border-red-400 bg-red-50")}
-                    />
+                      className={cn(inputCls, errors[`service_${i}`] && "border-red-400 bg-red-50")} />
                     {errors[`service_${i}`] && <p className="text-red-500 text-[10px] mt-0.5">{errors[`service_${i}`]}</p>}
                   </div>
                   <button onClick={() => removeService(i)} className="p-2 hover:bg-red-50 rounded-lg transition mt-0.5">
@@ -246,7 +246,7 @@ export default function BookingModal() {
 
           <div>
             <label className={labelCls}>Notes <span className="text-[var(--charcoal-mid)] normal-case tracking-normal font-normal">(optional)</span></label>
-            <textarea value={notes} onChange={e => { setNotes(e.target.value); setErrors(v => ({ ...v, notes: "" })); }}
+            <textarea value={notes} onChange={e => { setNotes(e.target.value); setErrors(v => ({ ...v, notes: "" })); } }
               rows={2} maxLength={100} className={cn(inputCls, "resize-none", errors.notes && "border-red-400 bg-red-50")}
               placeholder="Any additional notes…" />
             <div className="flex justify-between mt-0.5">
@@ -293,7 +293,14 @@ export default function BookingModal() {
           </div>
         </div>
       </div>
-    </div>
+    </div><ConfirmModal
+        open={confirmDelete}
+        title="Delete Booking"
+        message={`Are you sure you want to delete the booking for ${editingBooking?.client_name ?? "this client"}? This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)} /></>
   );
 }
 
