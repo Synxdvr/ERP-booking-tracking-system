@@ -42,7 +42,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
       {...attributes}
       onClick={(e) => { e.stopPropagation(); openEditBooking(booking); }}
       className={cn(
-        "relative border-l-[3px] border border-r border-t border-b border-r-transparent border-t-transparent border-b-transparent",
+        "relative border-l-[5px] border border-r border-t border-b border-r-transparent border-t-transparent border-b-transparent",
         "rounded-lg px-2.5 py-2 cursor-pointer transition select-none",
         "hover:shadow-md hover:-translate-y-px",
         s.bg,
