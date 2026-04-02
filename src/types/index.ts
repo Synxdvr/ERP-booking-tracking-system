@@ -36,6 +36,7 @@ export const TIME_SLOT_LABELS: Record<TimeSlot, string> = {
 export interface Room {
   id: string;
   name: string;
+  capacity: number;
   is_active: boolean;
   created_at: string;
 }
