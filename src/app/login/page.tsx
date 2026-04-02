@@ -4,11 +4,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const [identifier, setIdentifier] = useState(""); // username or email
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword]     = useState("");
   const [error, setError]           = useState("");
   const [loading, setLoading]       = useState(false);
-  const router = useRouter();
+  const router  = useRouter();
   const supabase = createClient();
 
   async function handleLogin(e: React.FormEvent) {
@@ -16,16 +16,14 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    // If no @ sign treat as username — look up email from users table
     let email = identifier.trim();
+
+    // Username (no @) — resolve via server-side lookup that uses service role key
     if (!email.includes("@")) {
-      const { data, error: lookupErr } = await supabase
-        .from("users")
-        .select("email")
-        .ilike("display_name", email)
-        .single();
-      if (lookupErr || !data) {
-        setError("Username not found.");
+      const res = await fetch(`/api/auth/lookup?username=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Username not found.");
         setLoading(false);
         return;
       }
@@ -34,7 +32,7 @@ export default function LoginPage() {
 
     const { error: authErr } = await supabase.auth.signInWithPassword({ email, password });
     if (authErr) {
-      setError("Invalid credentials.");
+      setError("Incorrect password.");
       setLoading(false);
     } else {
       router.push("/dashboard");
@@ -48,7 +46,6 @@ export default function LoginPage() {
         style={{ backgroundImage: "radial-gradient(circle at 1px 1px, #D4AF37 1px, transparent 0)", backgroundSize: "32px 32px" }} />
 
       <div className="relative w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-10">
           <span className="text-xs tracking-[0.3em] text-[var(--gold)] font-normal uppercase">Internal System</span>
           <h1 className="font-serif text-5xl font-semibold text-[var(--charcoal)] leading-tight mt-2">
@@ -60,7 +57,6 @@ export default function LoginPage() {
           <div className="w-12 h-px bg-[var(--gold)] mx-auto mt-4" />
         </div>
 
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-[var(--cream-3)] p-8">
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -76,6 +72,7 @@ export default function LoginPage() {
                 className="w-full px-4 py-3 rounded-xl bg-[var(--cream-3)] border border-transparent focus:border-[var(--gold)] focus:bg-white outline-none transition text-sm text-[var(--charcoal)]"
                 placeholder="username"
                 maxLength={100}
+                autoComplete="username"
               />
             </div>
 
@@ -88,20 +85,21 @@ export default function LoginPage() {
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-[var(--cream-3)] border border-transparent focus:border-[var(--gold)] focus:bg-white outline-none transition text-sm text-[var(--charcoal)]"
+                className="w-full px-4 py-3 rounded-xl bg-[var(--cream-3)] border border-transparent focus:border-[var(--gold)] focus:bg-white outline-none transition text-sm text-[var(--charcoal)] font-medium"
                 placeholder="••••••••"
                 maxLength={200}
+                autoComplete="current-password"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg border border-red-100">{error}</p>
+              <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg border border-red-100 font-medium">{error}</p>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 mt-2 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white text-sm tracking-widest uppercase font-medium transition disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-3 mt-2 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white text-sm tracking-widest uppercase font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? "Signing in…" : "Sign In"}
             </button>
