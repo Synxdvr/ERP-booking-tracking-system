@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { Booking, Room, Staff } from "@/types";
-import { format } from "date-fns";
 
 interface ScheduleStore {
   selectedDate: Date;
@@ -10,14 +9,14 @@ interface ScheduleStore {
   isLoading: boolean;
   modalOpen: boolean;
   editingBooking: Booking | null;
-  draftSlot: { slot: string; room_id: string } | null;
+  draftSlot: { slot: string; staff_id: string } | null;
 
   setSelectedDate: (date: Date) => void;
   setBookings: (bookings: Booking[]) => void;
   setRooms: (rooms: Room[]) => void;
   setStaff: (staff: Staff[]) => void;
   setLoading: (v: boolean) => void;
-  openNewBooking: (slot?: string, room_id?: string) => void;
+  openNewBooking: (slot?: string, staff_id?: string) => void;
   openEditBooking: (booking: Booking) => void;
   closeModal: () => void;
   upsertBooking: (booking: Booking) => void;
@@ -35,13 +34,13 @@ export const useScheduleStore = create<ScheduleStore>((set) => ({
   draftSlot: null,
 
   setSelectedDate: (date) => set({ selectedDate: date }),
-  setBookings: (bookings) => set({ bookings }),
-  setRooms: (rooms) => set({ rooms }),
-  setStaff: (staff) => set({ staff }),
-  setLoading: (v) => set({ isLoading: v }),
+  setBookings:     (bookings) => set({ bookings }),
+  setRooms:        (rooms) => set({ rooms }),
+  setStaff:        (staff) => set({ staff }),
+  setLoading:      (v) => set({ isLoading: v }),
 
-  openNewBooking: (slot, room_id) =>
-    set({ modalOpen: true, editingBooking: null, draftSlot: slot && room_id ? { slot, room_id } : null }),
+  openNewBooking: (slot, staff_id) =>
+    set({ modalOpen: true, editingBooking: null, draftSlot: slot && staff_id ? { slot, staff_id } : null }),
   openEditBooking: (booking) =>
     set({ modalOpen: true, editingBooking: booking, draftSlot: null }),
   closeModal: () =>
