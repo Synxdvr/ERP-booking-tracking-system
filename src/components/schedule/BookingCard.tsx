@@ -5,34 +5,47 @@ import { Booking } from "@/types";
 import { useScheduleStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
-// Status drives background + text color, but NOT the left border (that's therapist color)
 const STATUS_BG: Record<string, { bg: string; text: string; sub: string; dot: string }> = {
-  tentative: { bg: "bg-amber-50",          text: "text-amber-900",        sub: "text-amber-700",        dot: "bg-amber-400" },
-  confirmed: { bg: "bg-[var(--cream-3)]",  text: "text-[var(--charcoal)]", sub: "text-[var(--charcoal-mid)]", dot: "bg-[var(--gold)]" },
-  ongoing:   { bg: "bg-blue-50",           text: "text-blue-900",         sub: "text-blue-700",         dot: "bg-blue-500" },
-  done:      { bg: "bg-gray-50",           text: "text-gray-500",         sub: "text-gray-400",         dot: "bg-gray-400" },
-  cancelled: { bg: "bg-red-50",            text: "text-red-400",          sub: "text-red-300",          dot: "bg-red-400" },
+  tentative: { bg: "bg-amber-50",           text: "text-amber-900",         sub: "text-amber-700",         dot: "bg-amber-400" },
+  confirmed: { bg: "bg-[var(--cream-3)]",   text: "text-[var(--charcoal)]", sub: "text-[var(--charcoal-mid)]", dot: "bg-[var(--gold)]" },
+  ongoing:   { bg: "bg-blue-50",            text: "text-blue-900",          sub: "text-blue-700",          dot: "bg-blue-500" },
+  done:      { bg: "bg-gray-50",            text: "text-gray-500",          sub: "text-gray-400",          dot: "bg-gray-400" },
+  cancelled: { bg: "bg-red-50",             text: "text-red-400",           sub: "text-red-300",           dot: "bg-red-400" },
 };
 
-const DEFAULT_BORDER = "#D4AF37"; // gold — used when multiple therapists or none
+const DEFAULT_BORDER = "#D4AF37";
 
-function truncate(str: string, max: number) {
+function trunc(str: string, max: number) {
   return str.length > max ? str.slice(0, max) + "…" : str;
 }
 
-export default function BookingCard({ booking }: { booking: Booking }) {
+export default function BookingCard({ booking, viewingStaffId }: {
+  booking: Booking;
+  viewingStaffId?: string;
+}) {
   const { openEditBooking } = useScheduleStore();
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: booking.id });
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id: booking.id });
 
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
   const services = booking.booking_services ?? [];
   const s = STATUS_BG[booking.status] ?? STATUS_BG.confirmed;
 
-  // Border color: use therapist color if exactly one therapist, else default gold
+  // Border color: single therapist → their color, multiple → gold
   const borderColor =
     services.length === 1 && services[0].staff?.color_hex
       ? services[0].staff.color_hex
       : DEFAULT_BORDER;
+
+  // The service for the therapist whose column this card is in
+  const myService = viewingStaffId
+    ? services.find(svc => svc.staff_id === viewingStaffId)
+    : services[0];
+
+  // Other therapists on the same booking (co-therapists)
+  const otherServices = viewingStaffId
+    ? services.filter(svc => svc.staff_id !== viewingStaffId)
+    : services.slice(1);
 
   return (
     <div
@@ -42,39 +55,53 @@ export default function BookingCard({ booking }: { booking: Booking }) {
       {...attributes}
       onClick={(e) => { e.stopPropagation(); openEditBooking(booking); }}
       className={cn(
-        "relative border-l-[5px] border border-r border-t border-b border-r-transparent border-t-transparent border-b-transparent",
-        "rounded-lg px-2.5 py-2 cursor-pointer transition select-none",
-        "hover:shadow-md hover:-translate-y-px",
+        "relative border-l-[4px] border border-[var(--cream-3)] rounded-lg px-2.5 py-2",
+        "cursor-pointer transition select-none hover:shadow-md hover:-translate-y-px",
         s.bg,
         isDragging && "opacity-40 shadow-xl scale-95 z-50",
       )}
     >
       {/* Status dot */}
-      <span className={cn("absolute top-2 right-2 w-1.5 h-1.5 rounded-full flex-shrink-0", s.dot)} />
+      <span className={cn("absolute top-2 right-2 w-1.5 h-1.5 rounded-full", s.dot)} />
 
-      {/* Client name — bold, wraps if needed, max 2 lines */}
-      <p className={cn("font-bold text-xs leading-tight break-words pr-3 line-clamp-2", s.text)}>
+      {/* Client name */}
+      <p className={cn("font-bold text-xs leading-tight line-clamp-2 pr-3", s.text)}>
         {booking.client_name}
       </p>
 
-      {/* Therapist + service lines */}
-      {services.length > 0 && (
-        <div className="mt-1 space-y-0.5">
-          {services.slice(0, 3).map((svc, i) => (
-            <p key={svc.id ?? i} className={cn("text-[10px] leading-tight break-words", s.sub)}>
-              <span className="font-semibold">{truncate(svc.staff?.name ?? "—", 12)}</span>
-              {svc.service_name ? ` · ${truncate(svc.service_name, 18)}` : ""}
-            </p>
+      {/* This therapist's service */}
+      {myService?.service_name && (
+        <p className={cn("text-[10px] leading-tight mt-0.5 font-semibold break-words", s.sub)}>
+          {trunc(myService.service_name, 24)}
+        </p>
+      )}
+
+      {/* Room */}
+      {booking.room?.name && (
+        <p className={cn("text-[10px] leading-tight mt-0.5 font-medium opacity-70", s.sub)}>
+          {trunc(booking.room.name, 18)}
+        </p>
+      )}
+
+      {/* Co-therapists badge */}
+      {otherServices.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {otherServices.slice(0, 2).map((svc, i) => (
+            <span key={i}
+              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-white/60 border border-current"
+              style={{ color: svc.staff?.color_hex ?? DEFAULT_BORDER }}>
+              {trunc(svc.staff?.name ?? "?", 8)}
+            </span>
           ))}
-          {services.length > 3 && (
-            <p className={cn("text-[10px] opacity-60", s.sub)}>+{services.length - 3} more</p>
+          {otherServices.length > 2 && (
+            <span className={cn("text-[9px] opacity-60 font-medium", s.sub)}>+{otherServices.length - 2}</span>
           )}
         </div>
       )}
 
-      {/* Actual times if logged */}
+      {/* Actual times */}
       {booking.time_started && (
-        <p className={cn("text-[10px] mt-1 opacity-60", s.sub)}>
+        <p className={cn("text-[10px] mt-1 opacity-60 font-medium", s.sub)}>
           {booking.time_started}{booking.time_finished ? ` → ${booking.time_finished}` : ""}
         </p>
       )}
