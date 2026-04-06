@@ -69,7 +69,7 @@ export default function LoginPage() {
                 required
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-[var(--cream-3)] border border-transparent focus:border-[var(--gold)] focus:bg-white outline-none transition text-sm text-[var(--charcoal)]"
+                className="w-full px-4 py-3 rounded-xl bg-[var(--cream-3)] border border-transparent focus:border-[var(--gold)] focus:bg-white outline-none transition text-sm text-[var(--charcoal)] font-medium"
                 placeholder="username"
                 maxLength={100}
                 autoComplete="username"
