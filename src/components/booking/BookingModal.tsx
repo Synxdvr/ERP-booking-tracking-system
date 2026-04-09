@@ -16,13 +16,13 @@ export default function BookingModal() {
   } = useScheduleStore();
 
   const [clientName,    setClientName]    = useState("");
-  const [roomId,        setRoomId]        = useState("");         // "" = no room chosen
+  const [roomId,        setRoomId]        = useState("");
   const [slot,          setSlot]          = useState<TimeSlot>("11AM-12NN");
   const [status,        setStatus]        = useState<BookingStatus>("confirmed");
   const [timeStarted,   setTimeStarted]   = useState("");
   const [timeFinished,  setTimeFinished]  = useState("");
   const [notes,         setNotes]         = useState("");
-  // Each row: one therapist (required) + one service text (required)
+  // Always exactly 1 row: one therapist + one service text
   const [services,      setServices]      = useState<{ staff_id: string; service_name: string }[]>([]);
   const [errors,        setErrors]        = useState<Record<string, string>>({});
   const [apiError,      setApiError]      = useState("");
@@ -42,20 +42,20 @@ export default function BookingModal() {
       setTimeStarted(editingBooking.time_started ?? "");
       setTimeFinished(editingBooking.time_finished ?? "");
       setNotes(editingBooking.notes ?? "");
-      setServices((editingBooking.booking_services ?? []).map(s => ({
-        staff_id: s.staff_id,
-        service_name: s.service_name,
-      })));
+      // Load first service row only (or empty row if none)
+      const first = editingBooking.booking_services?.[0];
+      setServices([{
+        staff_id: first?.staff_id ?? "",
+        service_name: first?.service_name ?? "",
+      }]);
     } else {
-      // New booking defaults
       setClientName("");
-      setRoomId("");                                        // always start empty
+      setRoomId("");
       setSlot((draftSlot?.slot as TimeSlot) ?? "11AM-12NN");
       setStatus("confirmed");
       setTimeStarted(""); setTimeFinished(""); setNotes("");
-      // If opened from a therapist column → pre-fill that therapist, else empty row
       setServices([{
-        staff_id: draftSlot?.staff_id ?? "",              // "" = "Choose therapist"
+        staff_id: draftSlot?.staff_id ?? "",
         service_name: "",
       }]);
     }
@@ -68,20 +68,15 @@ export default function BookingModal() {
 
     if (!clientName.trim())                e.clientName = "Client name is required.";
     else if (clientName.trim().length < 2) e.clientName = "Name must be at least 2 characters.";
-    else if (clientName.length > 50)      e.clientName = "Max 50 characters.";
+    else if (clientName.length > 50)       e.clientName = "Max 50 characters.";
 
     if (!roomId)                            e.roomId = "Please choose a room.";
     if (notes.length > 100)                 e.notes  = "Max 100 characters.";
 
-    if (services.length === 0) {
-      e.services = "Service is required.";
-    } else {
-      services.forEach((svc, i) => {
-        if (!svc.staff_id)                      e[`staff_${i}`]   = "Choose a therapist.";
-        if (!svc.service_name.trim())           e[`service_${i}`] = "Service is required.";
-        else if (svc.service_name.length > 50) e[`service_${i}`] = "Max 50 characters.";
-      });
-    }
+    const svc = services[0];
+    if (!svc?.staff_id)                       e[`staff_0`]   = "Choose a therapist.";
+    if (!svc?.service_name.trim())            e[`service_0`] = "Service is required.";
+    else if (svc.service_name.length > 50)   e[`service_0`] = "Max 50 characters.";
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -126,17 +121,9 @@ export default function BookingModal() {
     closeModal();
   }
 
-  // ── Service rows ─────────────────────────────────────────────────────────────
-  function addService() {
-    setServices(s => [...s, { staff_id: "", service_name: "" }]);
-  }
-  function removeService(i: number) {
-    setServices(s => s.filter((_, idx) => idx !== i));
-  }
-  function updateService(i: number, field: "staff_id" | "service_name", val: string) {
-    setServices(s => s.map((svc, idx) => idx === i ? { ...svc, [field]: val } : svc));
-    // Clear per-row errors on change
-    setErrors(e => { const n = { ...e }; delete n[`staff_${i}`]; delete n[`service_${i}`]; return n; });
+  function updateService(field: "staff_id" | "service_name", val: string) {
+    setServices([{ ...services[0], [field]: val }]);
+    setErrors(e => { const n = { ...e }; delete n[`staff_0`]; delete n[`service_0`]; return n; });
   }
 
   return (
@@ -223,60 +210,39 @@ export default function BookingModal() {
               </Field>
             </div>
 
-            {/* Therapist + service rows */}
+            {/* Therapist + service — single row */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className={labelCls}>
-                  Therapist &amp; Service <span className="text-red-400">*</span>
-                </span>
-                <button
-                  onClick={addService}
-                  className="text-xs text-[var(--gold)] hover:text-[var(--gold-dark)] font-semibold transition"
-                >
-                  + Add row
-                </button>
-              </div>
+              <span className={labelCls}>
+                Therapist &amp; Service <span className="text-red-400">*</span>
+              </span>
 
-              {errors.services && <Err msg={errors.services} />}
+              <div className="flex gap-2 items-start mt-1.5">
+                {/* Therapist picker */}
+                <div className="w-36 flex-shrink-0">
+                  <select
+                    value={services[0]?.staff_id ?? ""}
+                    onChange={e => updateService("staff_id", e.target.value)}
+                    className={inp(errors[`staff_0`])}
+                  >
+                    <option value="">Choose…</option>
+                    {staff.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <Err msg={errors[`staff_0`]} />
+                </div>
 
-              <div className="space-y-2">
-                {services.map((svc, i) => (
-                  <div key={i} className="flex gap-2 items-start">
-                    {/* Therapist picker */}
-                    <div className="w-36 flex-shrink-0">
-                      <select
-                        value={svc.staff_id}
-                        onChange={e => updateService(i, "staff_id", e.target.value)}
-                        className={inp(errors[`staff_${i}`])}
-                      >
-                        <option value="">Choose…</option>
-                        {staff.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                      <Err msg={errors[`staff_${i}`]} />
-                    </div>
-
-                    {/* Service text */}
-                    <div className="flex-1">
-                      <input
-                        value={svc.service_name}
-                        onChange={e => updateService(i, "service_name", e.target.value)}
-                        placeholder="e.g. FACIAL / MASSAGE"
-                        maxLength={50}
-                        className={inp(errors[`service_${i}`])}
-                      />
-                      <Err msg={errors[`service_${i}`]} />
-                    </div>
-
-                    {/* Remove row — only show if more than 1 row */}
-                    {services.length > 1 && (
-                      <button onClick={() => removeService(i)} className="p-2 hover:bg-red-50 rounded-lg transition mt-0.5 flex-shrink-0">
-                        <X size={12} className="text-red-400" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                {/* Service text */}
+                <div className="flex-1">
+                  <input
+                    value={services[0]?.service_name ?? ""}
+                    onChange={e => updateService("service_name", e.target.value)}
+                    placeholder="e.g. FACIAL / MASSAGE"
+                    maxLength={50}
+                    className={inp(errors[`service_0`])}
+                  />
+                  <Err msg={errors[`service_0`]} />
+                </div>
               </div>
             </div>
 
@@ -351,7 +317,6 @@ export default function BookingModal() {
     </>
   );
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
   function clearErr(key: string) { setErrors(e => { const n = { ...e }; delete n[key]; return n; }); }
 }
 
