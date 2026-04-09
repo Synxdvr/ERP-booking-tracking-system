@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useScheduleStore } from "@/lib/store";
 import { BookingStatus, CreateBookingPayload, TIME_SLOTS, TimeSlot } from "@/types";
 import { format } from "date-fns";
-import { X, Trash2, Plus, AlertTriangle } from "lucide-react";
+import { X, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
@@ -16,12 +16,13 @@ export default function BookingModal() {
   } = useScheduleStore();
 
   const [clientName,    setClientName]    = useState("");
-  const [roomId,        setRoomId]        = useState("");
+  const [roomId,        setRoomId]        = useState("");         // "" = no room chosen
   const [slot,          setSlot]          = useState<TimeSlot>("11AM-12NN");
   const [status,        setStatus]        = useState<BookingStatus>("confirmed");
   const [timeStarted,   setTimeStarted]   = useState("");
   const [timeFinished,  setTimeFinished]  = useState("");
   const [notes,         setNotes]         = useState("");
+  // Each row: one therapist (required) + one service text (required)
   const [services,      setServices]      = useState<{ staff_id: string; service_name: string }[]>([]);
   const [errors,        setErrors]        = useState<Record<string, string>>({});
   const [apiError,      setApiError]      = useState("");
@@ -31,6 +32,8 @@ export default function BookingModal() {
 
   useEffect(() => {
     if (!modalOpen) return;
+    setErrors({}); setApiError("");
+
     if (editingBooking) {
       setClientName(editingBooking.client_name);
       setRoomId(editingBooking.room_id);
@@ -44,32 +47,42 @@ export default function BookingModal() {
         service_name: s.service_name,
       })));
     } else {
+      // New booking defaults
       setClientName("");
-      setRoomId(rooms[0]?.id ?? "");
+      setRoomId("");                                        // always start empty
       setSlot((draftSlot?.slot as TimeSlot) ?? "11AM-12NN");
       setStatus("confirmed");
       setTimeStarted(""); setTimeFinished(""); setNotes("");
-      // Pre-fill the therapist column that was clicked
-      setServices([{ staff_id: draftSlot?.staff_id ?? (staff[0]?.id ?? ""), service_name: "" }]);
+      // If opened from a therapist column → pre-fill that therapist, else empty row
+      setServices([{
+        staff_id: draftSlot?.staff_id ?? "",              // "" = "Choose therapist"
+        service_name: "",
+      }]);
     }
-    setErrors({}); setApiError("");
   }, [modalOpen, editingBooking, draftSlot]);
 
   if (!modalOpen) return null;
 
   function validate() {
     const e: Record<string, string> = {};
+
     if (!clientName.trim())                e.clientName = "Client name is required.";
     else if (clientName.trim().length < 2) e.clientName = "Name must be at least 2 characters.";
-    else if (clientName.length > 100)      e.clientName = "Name must be 100 characters or fewer.";
-    if (!roomId)                            e.roomId     = "Please select a room.";
-    if (notes.length > 500)                 e.notes      = "Notes must be 500 characters or fewer.";
-    if (services.length === 0)              e.services   = "At least one therapist assignment is required.";
-    services.forEach((svc, i) => {
-      if (!svc.staff_id)                    e[`staff_${i}`]   = "Select a therapist.";
-      if (!svc.service_name.trim())         e[`service_${i}`] = "Enter a service.";
-      else if (svc.service_name.length > 100) e[`service_${i}`] = "Max 100 characters.";
-    });
+    else if (clientName.length > 50)      e.clientName = "Max 50 characters.";
+
+    if (!roomId)                            e.roomId = "Please choose a room.";
+    if (notes.length > 100)                 e.notes  = "Max 100 characters.";
+
+    if (services.length === 0) {
+      e.services = "Service is required.";
+    } else {
+      services.forEach((svc, i) => {
+        if (!svc.staff_id)                      e[`staff_${i}`]   = "Choose a therapist.";
+        if (!svc.service_name.trim())           e[`service_${i}`] = "Service is required.";
+        else if (svc.service_name.length > 50) e[`service_${i}`] = "Max 50 characters.";
+      });
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -113,10 +126,17 @@ export default function BookingModal() {
     closeModal();
   }
 
-  function addService()  { setServices(s => [...s, { staff_id: staff[0]?.id ?? "", service_name: "" }]); }
-  function removeService(i: number) { setServices(s => s.filter((_, idx) => idx !== i)); }
+  // ── Service rows ─────────────────────────────────────────────────────────────
+  function addService() {
+    setServices(s => [...s, { staff_id: "", service_name: "" }]);
+  }
+  function removeService(i: number) {
+    setServices(s => s.filter((_, idx) => idx !== i));
+  }
   function updateService(i: number, field: "staff_id" | "service_name", val: string) {
     setServices(s => s.map((svc, idx) => idx === i ? { ...svc, [field]: val } : svc));
+    // Clear per-row errors on change
+    setErrors(e => { const n = { ...e }; delete n[`staff_${i}`]; delete n[`service_${i}`]; return n; });
   }
 
   return (
@@ -141,47 +161,43 @@ export default function BookingModal() {
           <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
 
             {/* Client name */}
-            <div>
-              <label className={labelCls}>Client Name <span className="text-red-400">*</span></label>
+            <Field label="Client Name" required>
               <input
                 value={clientName}
-                onChange={e => { setClientName(e.target.value); setErrors(v => ({ ...v, clientName: "" })); }}
-                className={cn(inputCls, errors.clientName && "border-red-400 bg-red-50")}
+                onChange={e => { setClientName(e.target.value); clearErr("clientName"); }}
+                className={inp(errors.clientName)}
                 placeholder="e.g. Maria Santos"
-                maxLength={100}
+                maxLength={50}
               />
-              {errors.clientName && <ErrMsg msg={errors.clientName} />}
-            </div>
+              <Err msg={errors.clientName} />
+            </Field>
 
-            {/* Slot + Room */}
+            {/* Time slot + Room — side by side */}
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Time Slot</label>
-                <select value={slot} onChange={e => setSlot(e.target.value as TimeSlot)} className={inputCls}>
+              <Field label="Time Slot">
+                <select value={slot} onChange={e => setSlot(e.target.value as TimeSlot)} className={inp()}>
                   {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className={labelCls}>Room <span className="text-red-400">*</span></label>
+              </Field>
+              <Field label="Room" required>
                 <select
                   value={roomId}
-                  onChange={e => { setRoomId(e.target.value); setErrors(v => ({ ...v, roomId: "" })); }}
-                  className={cn(inputCls, errors.roomId && "border-red-400 bg-red-50")}
+                  onChange={e => { setRoomId(e.target.value); clearErr("roomId"); }}
+                  className={inp(errors.roomId)}
                 >
-                  <option value="">Select room…</option>
+                  <option value="">Choose a room…</option>
                   {rooms.map(r => (
                     <option key={r.id} value={r.id}>
                       {r.name}{r.capacity > 1 ? ` (${r.capacity} ${r.capacity >= 5 ? "chairs" : "beds"})` : ""}
                     </option>
                   ))}
                 </select>
-                {errors.roomId && <ErrMsg msg={errors.roomId} />}
-              </div>
+                <Err msg={errors.roomId} />
+              </Field>
             </div>
 
-            {/* Status */}
-            <div>
-              <label className={labelCls}>Status</label>
+            {/* Status chips */}
+            <Field label="Status">
               <div className="flex gap-2 flex-wrap">
                 {STATUSES.map(s => (
                   <button key={s} onClick={() => setStatus(s)}
@@ -195,93 +211,103 @@ export default function BookingModal() {
                   </button>
                 ))}
               </div>
-            </div>
+            </Field>
 
             {/* Actual times */}
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>Time Started <span className="normal-case tracking-normal font-normal text-[var(--charcoal-mid)]">(optional)</span></label>
-                <input type="time" value={timeStarted} onChange={e => setTimeStarted(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Time Finished <span className="normal-case tracking-normal font-normal text-[var(--charcoal-mid)]">(optional)</span></label>
-                <input type="time" value={timeFinished} onChange={e => setTimeFinished(e.target.value)} className={inputCls} />
-              </div>
+              <Field label="Time Started" hint="optional">
+                <input type="time" value={timeStarted} onChange={e => setTimeStarted(e.target.value)} className={inp()} />
+              </Field>
+              <Field label="Time Finished" hint="optional">
+                <input type="time" value={timeFinished} onChange={e => setTimeFinished(e.target.value)} className={inp()} />
+              </Field>
             </div>
 
-            {/* Therapist assignments */}
+            {/* Therapist + service rows */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className={labelCls}>
-                  Therapists & Services <span className="text-red-400">*</span>
-                </label>
-                <button onClick={addService}
-                  className="flex items-center gap-1 text-xs text-[var(--gold)] hover:text-[var(--gold-dark)] transition font-semibold">
-                  <Plus size={12} /> Add
+                <span className={labelCls}>
+                  Therapist &amp; Service <span className="text-red-400">*</span>
+                </span>
+                <button
+                  onClick={addService}
+                  className="text-xs text-[var(--gold)] hover:text-[var(--gold-dark)] font-semibold transition"
+                >
+                  + Add row
                 </button>
               </div>
-              {errors.services && <ErrMsg msg={errors.services} />}
+
+              {errors.services && <Err msg={errors.services} />}
+
               <div className="space-y-2">
                 {services.map((svc, i) => (
                   <div key={i} className="flex gap-2 items-start">
-                    <div className="flex-shrink-0 w-32">
+                    {/* Therapist picker */}
+                    <div className="w-36 flex-shrink-0">
                       <select
                         value={svc.staff_id}
                         onChange={e => updateService(i, "staff_id", e.target.value)}
-                        className={cn(inputCls, errors[`staff_${i}`] && "border-red-400 bg-red-50")}
+                        className={inp(errors[`staff_${i}`])}
                       >
-                        <option value="">Staff…</option>
+                        <option value="">Choose…</option>
                         {staff.map(s => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>
-                      {errors[`staff_${i}`] && <ErrMsg msg={errors[`staff_${i}`]} />}
+                      <Err msg={errors[`staff_${i}`]} />
                     </div>
+
+                    {/* Service text */}
                     <div className="flex-1">
                       <input
                         value={svc.service_name}
                         onChange={e => updateService(i, "service_name", e.target.value)}
                         placeholder="e.g. FACIAL / MASSAGE"
-                        maxLength={100}
-                        className={cn(inputCls, errors[`service_${i}`] && "border-red-400 bg-red-50")}
+                        maxLength={50}
+                        className={inp(errors[`service_${i}`])}
                       />
-                      {errors[`service_${i}`] && <ErrMsg msg={errors[`service_${i}`]} />}
+                      <Err msg={errors[`service_${i}`]} />
                     </div>
-                    <button onClick={() => removeService(i)} className="p-2 hover:bg-red-50 rounded-lg transition mt-0.5">
-                      <X size={12} className="text-red-400" />
-                    </button>
+
+                    {/* Remove row — only show if more than 1 row */}
+                    {services.length > 1 && (
+                      <button onClick={() => removeService(i)} className="p-2 hover:bg-red-50 rounded-lg transition mt-0.5 flex-shrink-0">
+                        <X size={12} className="text-red-400" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Notes */}
-            <div>
-              <div className="flex justify-between items-end mb-1.5">
-                <label className={cn(labelCls, "mb-0")}>Notes <span className="normal-case tracking-normal font-normal text-[var(--charcoal-mid)]">(optional)</span></label>
-                <span className="text-[10px] text-[var(--charcoal-mid)] font-medium">{notes.length}/500</span>
+            <Field label="Notes" hint="optional">
+              <div className="relative">
+                <textarea
+                  value={notes}
+                  onChange={e => { setNotes(e.target.value); clearErr("notes"); }}
+                  rows={2} maxLength={100}
+                  className={cn(inp(errors.notes), "resize-none")}
+                  placeholder="Any additional notes…"
+                />
+                <span className="absolute bottom-2 right-3 text-[10px] text-[var(--charcoal-mid)] font-medium pointer-events-none">
+                  {notes.length}/100
+                </span>
               </div>
-              <textarea
-                value={notes}
-                onChange={e => { setNotes(e.target.value); setErrors(v => ({ ...v, notes: "" })); }}
-                rows={2} maxLength={500}
-                className={cn(inputCls, "resize-none", errors.notes && "border-red-400 bg-red-50")}
-                placeholder="Any additional notes…"
-              />
-              {errors.notes && <ErrMsg msg={errors.notes} />}
-            </div>
+              <Err msg={errors.notes} />
+            </Field>
 
-            {/* Audit */}
+            {/* Audit trail */}
             {editingBooking?.updated_at && (
               <p className="text-[10px] text-[var(--charcoal-mid)] font-medium">
                 Last updated {new Date(editingBooking.updated_at).toLocaleString("en-PH")}
               </p>
             )}
 
-            {/* API error */}
+            {/* API / conflict error */}
             {apiError && (
-              <div className="flex items-center gap-2 bg-red-50 text-red-700 text-xs px-3 py-2 rounded-lg border border-red-200 font-medium">
-                <AlertTriangle size={12} className="flex-shrink-0" />
+              <div className="flex items-center gap-2 bg-red-50 text-red-700 text-xs px-3 py-2.5 rounded-xl border border-red-200 font-medium">
+                <AlertTriangle size={13} className="flex-shrink-0" />
                 {apiError}
               </div>
             )}
@@ -290,11 +316,15 @@ export default function BookingModal() {
           {/* Footer */}
           <div className="px-6 pb-5 pt-3 border-t border-[var(--cream-3)] flex items-center justify-between gap-3">
             {editingBooking ? (
-              <button onClick={() => setConfirmDelete(true)} disabled={deleting}
-                className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 transition disabled:opacity-50 font-semibold">
+              <button
+                onClick={() => setConfirmDelete(true)}
+                disabled={deleting}
+                className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 transition disabled:opacity-50 font-semibold"
+              >
                 <Trash2 size={13} />{deleting ? "Deleting…" : "Delete"}
               </button>
             ) : <div />}
+
             <div className="flex gap-2">
               <button onClick={closeModal}
                 className="px-4 py-2 rounded-xl border border-[var(--cream-3)] text-xs text-[var(--charcoal-mid)] hover:bg-[var(--cream-3)] font-semibold transition">
@@ -320,11 +350,36 @@ export default function BookingModal() {
       />
     </>
   );
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  function clearErr(key: string) { setErrors(e => { const n = { ...e }; delete n[key]; return n; }); }
 }
 
-function ErrMsg({ msg }: { msg: string }) {
+function Field({ label, required, hint, children }: {
+  label: string; required?: boolean; hint?: string; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className={labelCls}>
+        {label}
+        {required && <span className="text-red-400 ml-0.5">*</span>}
+        {hint && <span className="normal-case tracking-normal font-normal text-[var(--charcoal-mid)] ml-1">({hint})</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Err({ msg }: { msg?: string }) {
+  if (!msg) return null;
   return <p className="text-red-500 text-[10px] mt-1 font-medium">{msg}</p>;
 }
 
 const labelCls = "block text-[10px] tracking-widest uppercase text-[var(--charcoal-mid)] mb-1.5 font-semibold";
-const inputCls  = "w-full px-3 py-2.5 rounded-xl bg-[var(--cream-3)] border border-transparent focus:border-[var(--gold)] focus:bg-white outline-none transition text-sm text-[var(--charcoal)] font-medium";
+function inp(err?: string) {
+  return cn(
+    "w-full px-3 py-2.5 rounded-xl bg-[var(--cream-3)] border border-transparent",
+    "focus:border-[var(--gold)] focus:bg-white outline-none transition text-sm text-[var(--charcoal)] font-medium",
+    err && "border-red-400 bg-red-50"
+  );
+}
