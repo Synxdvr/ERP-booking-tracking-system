@@ -18,9 +18,9 @@ export type TimeSlot =
   | "10PM-11PM";
 
 export const TIME_SLOTS: TimeSlot[] = [
-  "11AM-12NN","12NN-1PM","1PM-2PM","2PM-3PM","3PM-4PM",
-  "4PM-5PM","5PM-6PM","6PM-7PM","7PM-8PM","8PM-9PM",
-  "9PM-10PM","10PM-11PM"
+  "11AM-12NN","12NN-1PM","1PM-2PM","2PM-3PM",
+  "3PM-4PM","4PM-5PM","5PM-6PM","6PM-7PM",
+  "7PM-8PM","8PM-9PM","9PM-10PM","10PM-11PM"
 ];
 
 export const TIME_SLOT_LABELS: Record<TimeSlot, string> = {
@@ -50,6 +50,7 @@ export interface Staff {
   id: string;
   name: string;
   color_hex: string;
+  sort_order: number;
   is_active: boolean;
   created_at: string;
 }
