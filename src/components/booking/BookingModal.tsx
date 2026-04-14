@@ -93,7 +93,7 @@ export default function BookingModal() {
       room_id: roomId,
       status,
       notes: notes || undefined,
-      services,
+      services: services as [{ staff_id: string; service_name: string }],
     };
 
     const url    = editingBooking ? `/api/bookings/${editingBooking.id}` : "/api/bookings";
