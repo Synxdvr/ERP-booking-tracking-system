@@ -13,11 +13,14 @@ export type TimeSlot =
   | "5PM-6PM"
   | "6PM-7PM"
   | "7PM-8PM"
-  | "8PM-9PM";
+  | "8PM-9PM"
+  | "9PM-10PM"
+  | "10PM-11PM";
 
 export const TIME_SLOTS: TimeSlot[] = [
   "11AM-12NN","12NN-1PM","1PM-2PM","2PM-3PM","3PM-4PM",
   "4PM-5PM","5PM-6PM","6PM-7PM","7PM-8PM","8PM-9PM",
+  "9PM-10PM","10PM-11PM"
 ];
 
 export const TIME_SLOT_LABELS: Record<TimeSlot, string> = {
@@ -31,6 +34,8 @@ export const TIME_SLOT_LABELS: Record<TimeSlot, string> = {
   "6PM-7PM":   "6 PM",
   "7PM-8PM":   "7 PM",
   "8PM-9PM":   "8 PM",
+  "9PM-10PM":  "9 PM",
+  "10PM-11PM": "10 PM",
 };
 
 export interface Room {
@@ -84,7 +89,7 @@ export interface CreateBookingPayload {
   room_id: string;
   status: BookingStatus;
   notes?: string;
-  services: { staff_id: string; service_name: string }[];
+  services: [{ staff_id: string; service_name: string }];
 }
 
 export interface UpdateBookingPayload extends Partial<CreateBookingPayload> {
