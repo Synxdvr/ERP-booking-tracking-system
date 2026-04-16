@@ -15,7 +15,7 @@ export function useBookings() {
     setLoading(true);
     const { data, error } = await supabase
       .from("bookings")
-      .select(`*, room:rooms(*), booking_services(*, staff:staff(*))`)
+      .select("*, room:rooms(*), booking_services(*, staff:staff(*))")
       .eq("date", dateStr)
       .order("booked_slot");
     if (!error && data) setBookings(data as Booking[]);
@@ -23,12 +23,20 @@ export function useBookings() {
   }, [dateStr]);
 
   const fetchRooms = useCallback(async () => {
-    const { data } = await supabase.from("rooms").select("*").eq("is_active", true).order("name");
+    const { data } = await supabase
+      .from("rooms")
+      .select("*")
+      .eq("is_active", true)
+      .order("name");
     if (data) setRooms(data as Room[]);
   }, []);
 
   const fetchStaff = useCallback(async () => {
-    const { data } = await supabase.from("staff").select("*").eq("is_active", true).order("name");
+    const { data } = await supabase
+      .from("staff")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
     if (data) setStaff(data as Staff[]);
   }, []);
 
@@ -39,7 +47,10 @@ export function useBookings() {
     fetchStaff();
   }, [fetchBookings]);
 
-  // Realtime subscription for the selected date
+  useEffect(() => {
+    fetchStaff();
+  }, []);
+
   useEffect(() => {
     const channel = supabase
       .channel(`bookings:${dateStr}`)
@@ -50,10 +61,9 @@ export function useBookings() {
           if (payload.eventType === "DELETE") {
             removeBooking(payload.old.id as string);
           } else {
-            // Refetch the full booking with joins
             const { data } = await supabase
               .from("bookings")
-              .select(`*, room:rooms(*), booking_services(*, staff:staff(*))`)
+              .select("*, room:rooms(*), booking_services(*, staff:staff(*))")
               .eq("id", (payload.new as { id: string }).id)
               .single();
             if (data) upsertBooking(data as Booking);
@@ -65,5 +75,5 @@ export function useBookings() {
     return () => { supabase.removeChannel(channel); };
   }, [dateStr]);
 
-  return { refetch: fetchBookings };
+  return { refetch: fetchBookings, refetchStaff: fetchStaff };
 }
