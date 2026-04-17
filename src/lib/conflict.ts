@@ -14,7 +14,7 @@ export function checkConflict(
     date: string;
     booked_slot: TimeSlot;
     room_id: string;
-    staff_ids: string[];          // kept in signature for API compatibility
+    staff_ids: string[];
     exclude_booking_id?: string;
   },
   existingBookings: Booking[],
