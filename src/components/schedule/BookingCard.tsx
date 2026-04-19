@@ -1,17 +1,9 @@
 "use client";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Booking } from "@/types";
+import { Booking, STATUS_BG } from "@/types";
 import { useScheduleStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-
-const STATUS_BG: Record<string, { bg: string; text: string; sub: string; dot: string }> = {
-  tentative: { bg: "bg-amber-50",           text: "text-amber-900",         sub: "text-amber-700",         dot: "bg-amber-400" },
-  confirmed: { bg: "bg-[var(--cream-3)]",   text: "text-[var(--charcoal)]", sub: "text-[var(--charcoal-mid)]", dot: "bg-[var(--gold)]" },
-  ongoing:   { bg: "bg-blue-50",            text: "text-blue-900",          sub: "text-blue-700",          dot: "bg-blue-500" },
-  done:      { bg: "bg-gray-50",            text: "text-gray-500",          sub: "text-gray-400",          dot: "bg-gray-400" },
-  cancelled: { bg: "bg-red-50",             text: "text-red-400",           sub: "text-red-300",           dot: "bg-red-400" },
-};
 
 const DEFAULT_BORDER = "#D4AF37";
 
@@ -31,18 +23,15 @@ export default function BookingCard({ booking, viewingStaffId }: {
   const services = booking.booking_services ?? [];
   const s = STATUS_BG[booking.status] ?? STATUS_BG.confirmed;
 
-  // Border color: single therapist → their color, multiple → gold
   const borderColor =
     services.length === 1 && services[0].staff?.color_hex
       ? services[0].staff.color_hex
       : DEFAULT_BORDER;
 
-  // The service for the therapist whose column this card is in
   const myService = viewingStaffId
     ? services.find(svc => svc.staff_id === viewingStaffId)
     : services[0];
 
-  // Other therapists on the same booking (co-therapists)
   const otherServices = viewingStaffId
     ? services.filter(svc => svc.staff_id !== viewingStaffId)
     : services.slice(1);
@@ -94,16 +83,11 @@ export default function BookingCard({ booking, viewingStaffId }: {
             </span>
           ))}
           {otherServices.length > 2 && (
-            <span className={cn("text-[9px] opacity-60 font-medium", s.sub)}>+{otherServices.length - 2}</span>
+            <span className={cn("text-[9px] opacity-60 font-medium", s.sub)}>
+              +{otherServices.length - 2}
+            </span>
           )}
         </div>
-      )}
-
-      {/* Actual times */}
-      {booking.time_started && (
-        <p className={cn("text-[10px] mt-1 opacity-60 font-medium", s.sub)}>
-          {booking.time_started}{booking.time_finished ? ` → ${booking.time_finished}` : ""}
-        </p>
       )}
     </div>
   );
