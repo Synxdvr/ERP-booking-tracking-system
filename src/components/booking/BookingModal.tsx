@@ -1,13 +1,19 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useScheduleStore } from "@/lib/store";
-import { BookingStatus, CreateBookingPayload, TIME_SLOTS, TimeSlot } from "@/types";
+import {
+  BookingStatus,
+  CreateBookingPayload,
+  STATUS_ACTIONS,
+  STATUS_LABELS,
+  STATUS_BG,
+  TIME_SLOTS,
+  TimeSlot,
+} from "@/types";
 import { format } from "date-fns";
 import { X, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmModal from "@/components/ui/ConfirmModal";
-
-const STATUSES: BookingStatus[] = ["tentative", "confirmed", "ongoing", "done", "cancelled"];
 
 export default function BookingModal() {
   const {
@@ -15,19 +21,18 @@ export default function BookingModal() {
     selectedDate, rooms, staff, upsertBooking, removeBooking,
   } = useScheduleStore();
 
-  const [clientName,    setClientName]    = useState("");
-  const [roomId,        setRoomId]        = useState("");
-  const [slot,          setSlot]          = useState<TimeSlot>("11AM-12NN");
-  const [status,        setStatus]        = useState<BookingStatus>("confirmed");
-  const [timeStarted,   setTimeStarted]   = useState("");
-  const [timeFinished,  setTimeFinished]  = useState("");
-  const [notes,         setNotes]         = useState("");
-  // Always exactly 1 row: one therapist + one service text
-  const [services,      setServices]      = useState<{ staff_id: string; service_name: string }[]>([]);
-  const [errors,        setErrors]        = useState<Record<string, string>>({});
-  const [apiError,      setApiError]      = useState("");
-  const [saving,        setSaving]        = useState(false);
-  const [deleting,      setDeleting]      = useState(false);
+  const [clientName,   setClientName]   = useState("");
+  const [roomId,       setRoomId]       = useState("");
+  const [slot,         setSlot]         = useState<TimeSlot>("11AM-12NN");
+  const [timeStarted,  setTimeStarted]  = useState("");
+  const [timeFinished, setTimeFinished] = useState("");
+  const [notes,        setNotes]        = useState("");
+  const [services,     setServices]     = useState<{ staff_id: string; service_name: string }[]>([]);
+  const [errors,       setErrors]       = useState<Record<string, string>>({});
+  const [apiError,     setApiError]     = useState("");
+  const [saving,       setSaving]       = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [statusLoading, setStatusLoading] = useState<BookingStatus | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -38,46 +43,56 @@ export default function BookingModal() {
       setClientName(editingBooking.client_name);
       setRoomId(editingBooking.room_id);
       setSlot(editingBooking.booked_slot);
-      setStatus(editingBooking.status);
       setTimeStarted(editingBooking.time_started ?? "");
       setTimeFinished(editingBooking.time_finished ?? "");
       setNotes(editingBooking.notes ?? "");
-      // Load first service row only (or empty row if none)
       const first = editingBooking.booking_services?.[0];
-      setServices([{
-        staff_id: first?.staff_id ?? "",
-        service_name: first?.service_name ?? "",
-      }]);
+      setServices([{ staff_id: first?.staff_id ?? "", service_name: first?.service_name ?? "" }]);
     } else {
       setClientName("");
       setRoomId("");
       setSlot((draftSlot?.slot as TimeSlot) ?? "11AM-12NN");
-      setStatus("confirmed");
       setTimeStarted(""); setTimeFinished(""); setNotes("");
-      setServices([{
-        staff_id: draftSlot?.staff_id ?? "",
-        service_name: "",
-      }]);
+      setServices([{ staff_id: draftSlot?.staff_id ?? "", service_name: "" }]);
     }
   }, [modalOpen, editingBooking, draftSlot]);
 
   if (!modalOpen) return null;
 
+  // ── Status action handler ─────────────────────────────────────────────────
+  async function handleStatusAction(next: BookingStatus) {
+    if (!editingBooking) return;
+    setStatusLoading(next);
+    setApiError("");
+
+    const res = await fetch(`/api/bookings/${editingBooking.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    const data = await res.json();
+    setStatusLoading(null);
+
+    if (!res.ok) {
+      setApiError(data.error ?? "Status update failed.");
+      return;
+    }
+    upsertBooking(data);
+    closeModal();
+  }
+
+  // ── Form save ─────────────────────────────────────────────────────────────
   function validate() {
     const e: Record<string, string> = {};
-
     if (!clientName.trim())                e.clientName = "Client name is required.";
     else if (clientName.trim().length < 2) e.clientName = "Name must be at least 2 characters.";
     else if (clientName.length > 50)       e.clientName = "Max 50 characters.";
-
-    if (!roomId)                            e.roomId = "Please choose a room.";
-    if (notes.length > 100)                 e.notes  = "Max 100 characters.";
-
+    if (!roomId)                           e.roomId     = "Please choose a room.";
+    if (notes.length > 100)                e.notes      = "Max 100 characters.";
     const svc = services[0];
-    if (!svc?.staff_id)                       e[`staff_0`]   = "Choose a therapist.";
-    if (!svc?.service_name.trim())            e[`service_0`] = "Service is required.";
-    else if (svc.service_name.length > 50)   e[`service_0`] = "Max 50 characters.";
-
+    if (!svc?.staff_id)                    e[`staff_0`]   = "Choose a therapist.";
+    if (!svc?.service_name.trim())         e[`service_0`] = "Service is required.";
+    else if (svc.service_name.length > 50) e[`service_0`] = "Max 50 characters.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -91,7 +106,7 @@ export default function BookingModal() {
       booked_slot: slot,
       client_name: clientName.trim(),
       room_id: roomId,
-      status,
+      status: "confirmed",
       notes: notes || undefined,
       services: services as [{ staff_id: string; service_name: string }],
     };
@@ -126,6 +141,9 @@ export default function BookingModal() {
     setErrors(e => { const n = { ...e }; delete n[`staff_0`]; delete n[`service_0`]; return n; });
   }
 
+  const statusActions = editingBooking ? STATUS_ACTIONS[editingBooking.status] : [];
+  const statusStyle   = editingBooking ? STATUS_BG[editingBooking.status] : null;
+
   return (
     <>
       <div
@@ -136,9 +154,21 @@ export default function BookingModal() {
 
           {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[var(--cream-3)]">
-            <h2 className="font-serif text-xl text-[var(--charcoal)] font-semibold">
-              {editingBooking ? "Edit Booking" : "New Booking"}
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="font-serif text-xl text-[var(--charcoal)] font-semibold">
+                {editingBooking ? "Edit Booking" : "New Booking"}
+              </h2>
+              {/* Status badge — edit mode only */}
+              {editingBooking && statusStyle && (
+                <span className={cn(
+                  "text-[10px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5",
+                  statusStyle.bg, statusStyle.text
+                )}>
+                  <span className={cn("w-1.5 h-1.5 rounded-full", statusStyle.dot)} />
+                  {STATUS_LABELS[editingBooking.status]}
+                </span>
+              )}
+            </div>
             <button onClick={closeModal} className="p-1.5 hover:bg-[var(--cream-3)] rounded-lg transition">
               <X size={16} className="text-[var(--charcoal-mid)]" />
             </button>
@@ -146,6 +176,28 @@ export default function BookingModal() {
 
           {/* Body */}
           <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+
+            {/* ── Status action buttons — edit mode only ── */}
+            {editingBooking && statusActions.length > 0 && (
+              <div className="flex gap-2 pb-4 border-b border-[var(--cream-3)]">
+                {statusActions.map((action) => (
+                  <button
+                    key={action.next}
+                    disabled={statusLoading !== null}
+                    onClick={() => handleStatusAction(action.next)}
+                    className={cn(
+                      "flex-1 py-2.5 rounded-xl text-xs font-semibold border tracking-wide uppercase transition",
+                      "disabled:opacity-50 disabled:cursor-not-allowed",
+                      action.variant === "primary" && "bg-[var(--gold)] border-[var(--gold)] text-white hover:bg-[var(--gold-dark)]",
+                      action.variant === "danger"  && "border-red-300 text-red-500 bg-white hover:bg-red-50",
+                      action.variant === "ghost"   && "border-[var(--cream-3)] text-[var(--charcoal-mid)] bg-white hover:bg-[var(--cream-3)]",
+                    )}
+                  >
+                    {statusLoading === action.next ? "Updating…" : action.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Client name */}
             <Field label="Client Name" required>
@@ -159,7 +211,7 @@ export default function BookingModal() {
               <Err msg={errors.clientName} />
             </Field>
 
-            {/* Time slot + Room — side by side */}
+            {/* Time slot + Room */}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Time Slot">
                 <select value={slot} onChange={e => setSlot(e.target.value as TimeSlot)} className={inp()}>
@@ -183,23 +235,6 @@ export default function BookingModal() {
               </Field>
             </div>
 
-            {/* Status chips */}
-            <Field label="Status">
-              <div className="flex gap-2 flex-wrap">
-                {STATUSES.map(s => (
-                  <button key={s} onClick={() => setStatus(s)}
-                    className={cn(
-                      "px-3 py-1 rounded-full text-xs capitalize border transition font-medium",
-                      status === s
-                        ? "bg-[var(--gold)] border-[var(--gold)] text-white"
-                        : "border-[var(--cream-3)] text-[var(--charcoal-mid)] hover:border-[var(--gold)]"
-                    )}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
             {/* Actual times */}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Time Started" hint="optional">
@@ -210,14 +245,12 @@ export default function BookingModal() {
               </Field>
             </div>
 
-            {/* Therapist + service — single row */}
+            {/* Therapist + service */}
             <div>
               <span className={labelCls}>
                 Therapist &amp; Service <span className="text-red-400">*</span>
               </span>
-
               <div className="flex gap-2 items-start mt-1.5">
-                {/* Therapist picker */}
                 <div className="w-36 flex-shrink-0">
                   <select
                     value={services[0]?.staff_id ?? ""}
@@ -225,14 +258,10 @@ export default function BookingModal() {
                     className={inp(errors[`staff_0`])}
                   >
                     <option value="">Choose…</option>
-                    {staff.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
+                    {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <Err msg={errors[`staff_0`]} />
                 </div>
-
-                {/* Service text */}
                 <div className="flex-1">
                   <input
                     value={services[0]?.service_name ?? ""}
@@ -292,17 +321,23 @@ export default function BookingModal() {
             ) : <div />}
 
             <div className="flex gap-2">
-              <button onClick={closeModal}
-                className="px-4 py-2 rounded-xl border border-[var(--cream-3)] text-xs text-[var(--charcoal-mid)] hover:bg-[var(--cream-3)] font-semibold transition">
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 rounded-xl border border-[var(--cream-3)] text-xs text-[var(--charcoal-mid)] hover:bg-[var(--cream-3)] font-semibold transition"
+              >
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={saving}
-                className="px-5 py-2 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white text-xs tracking-widest uppercase font-semibold transition disabled:opacity-60">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-5 py-2 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white text-xs tracking-widest uppercase font-semibold transition disabled:opacity-60"
+              >
                 {saving ? "Saving…" : editingBooking ? "Update" : "Create"}
               </button>
             </div>
           </div>
         </div>
+        
       </div>
 
       <ConfirmModal
@@ -317,7 +352,9 @@ export default function BookingModal() {
     </>
   );
 
-  function clearErr(key: string) { setErrors(e => { const n = { ...e }; delete n[key]; return n; }); }
+  function clearErr(key: string) {
+    setErrors(e => { const n = { ...e }; delete n[key]; return n; });
+  }
 }
 
 function Field({ label, required, hint, children }: {
