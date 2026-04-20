@@ -206,10 +206,10 @@ export default function BookingModal() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Time Started" hint="optional">
+              <Field label="Time Started">
                 <input type="time" value={timeStarted} onChange={e => setTimeStarted(e.target.value)} className={inp()} />
               </Field>
-              <Field label="Time Finished" hint="optional">
+              <Field label="Time Finished">
                 <input type="time" value={timeFinished} onChange={e => setTimeFinished(e.target.value)} className={inp()} />
               </Field>
             </div>
