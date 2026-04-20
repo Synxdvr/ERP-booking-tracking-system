@@ -54,7 +54,7 @@ export default function BookingCard({ booking, viewingStaffId }: {
       <span className={cn("absolute top-2 right-2 w-1.5 h-1.5 rounded-full", s.dot)} />
 
       {/* Client name */}
-      <p className={cn("font-bold text-xs leading-tight line-clamp-2 pr-3", s.text)}>
+      <p className={cn("font-bold text-xs leading-tight line-clamp-2", s.text)}>
         {booking.client_name}
       </p>
 
