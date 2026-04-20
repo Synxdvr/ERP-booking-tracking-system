@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  // ── Conflict check (unchanged from original) ──────────────────────────────
+  // ── Conflict check ────────────────────────────────────────────────────────
   if (body.booked_slot || body.room_id || body.services) {
     const { data: current } = await supabase
       .from("bookings")
@@ -72,9 +72,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   // ── Auto-populate slot times when booked_slot changes ────────────────────
   const slotKey = body.booked_slot as TimeSlot | undefined;
   if (slotKey && SLOT_TIMES[slotKey]) {
-    const { start, end } = SLOT_TIMES[slotKey];
-    body.slot_start_time = `${start}:00+08`;
-    body.slot_end_time   = `${end}:00+08`;
+    body.slot_start_time = SLOT_TIMES[slotKey].start;
+    body.slot_end_time   = SLOT_TIMES[slotKey].end;
   }
 
   const { services, ...bookingFields } = body;
