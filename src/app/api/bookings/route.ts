@@ -43,10 +43,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: conflict.conflictDetail, conflictType: conflict.conflictType }, { status: 409 });
   }
 
-  // Derive slot times for cron automation
+
   const slotTimes = SLOT_TIMES[body.booked_slot as TimeSlot];
-  const slot_start_time = slotTimes ? `${slotTimes.start}:00+08` : null;
-  const slot_end_time   = slotTimes ? `${slotTimes.end}:00+08`   : null;
+  const slot_start_time = slotTimes?.start ?? null;
+  const slot_end_time   = slotTimes?.end   ?? null;
 
   // Insert booking
   const { data: booking, error } = await supabase
