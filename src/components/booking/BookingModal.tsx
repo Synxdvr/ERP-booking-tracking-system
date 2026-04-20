@@ -96,21 +96,30 @@ export default function BookingModal() {
     if (!validate()) return;
     setSaving(true); setApiError("");
 
-    const payload: CreateBookingPayload = {
-      date: format(selectedDate, "yyyy-MM-dd"),
-      booked_slot: slot,
-      client_name: clientName.trim(),
-      room_id: roomId,
-      status: "confirmed",
-      notes: notes || undefined,
-      services: services as [{ staff_id: string; service_name: string }],
-    };
-
     const url    = editingBooking ? `/api/bookings/${editingBooking.id}` : "/api/bookings";
     const method = editingBooking ? "PATCH" : "POST";
-    const body   = editingBooking
-      ? { ...payload, id: editingBooking.id, time_started: timeStarted || null, time_finished: timeFinished || null }
-      : payload;
+
+    const body = editingBooking
+      ? {
+          id:             editingBooking.id,
+          date:           format(selectedDate, "yyyy-MM-dd"),
+          booked_slot:    slot,
+          client_name:    clientName.trim(),
+          room_id:        roomId,
+          notes:          notes || null,
+          time_started:   timeStarted || null,
+          time_finished:  timeFinished || null,
+          services:       services as [{ staff_id: string; service_name: string }],
+        }
+      : {
+          date:        format(selectedDate, "yyyy-MM-dd"),
+          booked_slot: slot,
+          client_name: clientName.trim(),
+          room_id:     roomId,
+          status:      "confirmed" as const,
+          notes:       notes || undefined,
+          services:    services as [{ staff_id: string; service_name: string }],
+        };
 
     const res  = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json();
