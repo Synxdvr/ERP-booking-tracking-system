@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { checkConflict } from "@/lib/conflict";
-import { Booking, CreateBookingPayload, Room } from "@/types";
+import { Booking, CreateBookingPayload, Room, SLOT_TIMES, TimeSlot } from "@/types";
 
 export async function GET(req: NextRequest) {
   const supabase = createClient();
@@ -25,10 +25,8 @@ export async function POST(req: NextRequest) {
 
   const body: CreateBookingPayload = await req.json();
 
-  // Fetch rooms for capacity check
   const { data: rooms } = await supabase.from("rooms").select("*");
 
-  // Fetch existing bookings for conflict check
   const { data: existing } = await supabase
     .from("bookings")
     .select("*, booking_services(staff_id, staff:staff(name))")
@@ -45,12 +43,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: conflict.conflictDetail, conflictType: conflict.conflictType }, { status: 409 });
   }
 
+  // Derive slot times for cron automation
+  const slotTimes = SLOT_TIMES[body.booked_slot as TimeSlot];
+  const slot_start_time = slotTimes ? `${slotTimes.start}:00+08` : null;
+  const slot_end_time   = slotTimes ? `${slotTimes.end}:00+08`   : null;
+
   // Insert booking
   const { data: booking, error } = await supabase
     .from("bookings")
-    .insert({ date: body.date, booked_slot: body.booked_slot, client_name: body.client_name,
-              room_id: body.room_id, status: body.status ?? "confirmed", notes: body.notes ?? null,
-              created_by: user.id, updated_by: user.id })
+    .insert({
+      date:             body.date,
+      booked_slot:      body.booked_slot,
+      slot_start_time,
+      slot_end_time,
+      client_name:      body.client_name,
+      room_id:          body.room_id,
+      status:           body.status ?? "confirmed",
+      notes:            body.notes ?? null,
+      created_by:       user.id,
+      updated_by:       user.id,
+    })
     .select()
     .single();
 
@@ -62,7 +74,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Re-fetch with full joins so the client gets room + booking_services + staff in one shot
   const { data: full } = await supabase
     .from("bookings")
     .select("*, room:rooms(*), booking_services(*, staff:staff(*))")
