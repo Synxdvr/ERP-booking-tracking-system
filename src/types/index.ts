@@ -1,5 +1,6 @@
 export type UserRole = "admin" | "staff";
 export type BookingStatus = "confirmed" | "ongoing" | "done" | "cancelled";
+export type AttendanceStatus = "present" | "absent" | "leave";
 
 export type TimeSlot =
   | "11AM-12NN"
@@ -183,6 +184,20 @@ export interface ConflictResult {
   hasConflict: boolean;
   conflictType?: "room" | "staff";
   conflictDetail?: string;
+}
+
+// ─── Attendance ───────────────────────────────────────────────────────────────
+
+export interface StaffAttendance {
+  id: string;
+  date: string;
+  staff_id: string;
+  status: AttendanceStatus;
+  arrived_at: string | null;
+  arrival_order: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
