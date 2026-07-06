@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from "react";
 import { Staff } from "@/types";
 import { Plus, Pencil, X, Check, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "@/components/ui/Toaster";
 
 const PRESET_COLORS = [
   "#BE6B7A","#7A9E85","#6B8EB8","#B8866B",
@@ -11,36 +13,43 @@ const PRESET_COLORS = [
 ];
 
 export default function StaffPage() {
-  const [staff,      setStaff]      = useState<Staff[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [editId,     setEditId]     = useState<string | null>(null);
-  const [editName,   setEditName]   = useState("");
-  const [editColor,  setEditColor]  = useState("#D4AF37");
-  const [adding,     setAdding]     = useState(false);
-  const [newName,    setNewName]    = useState("");
-  const [newColor,   setNewColor]   = useState("#7A9E85");
-  const [saving,     setSaving]     = useState(false);
-  const [reordering, setReordering] = useState(false);
-  const [error,      setError]      = useState("");
+  const [staff,        setStaff]        = useState<Staff[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [editId,       setEditId]       = useState<string | null>(null);
+  const [editName,     setEditName]     = useState("");
+  const [editColor,    setEditColor]    = useState("#D4AF37");
+  const [adding,       setAdding]       = useState(false);
+  const [newName,      setNewName]      = useState("");
+  const [newColor,     setNewColor]     = useState("#7A9E85");
+  const [saving,       setSaving]       = useState(false);
+  const [reordering,   setReordering]   = useState(false);
+  const [deletingId,   setDeletingId]   = useState<string | null>(null);
+  const [confirmMember, setConfirmMember] = useState<Staff | null>(null);
+  const [error,        setError]        = useState("");
 
   // Drag state
-  const dragIndex  = useRef<number | null>(null);
-  const overIndex  = useRef<number | null>(null);
+  const dragIndex = useRef<number | null>(null);
 
   async function load() {
     setLoading(true);
     const res = await fetch("/api/staff");
-    setStaff(await res.json());
+    if (res.ok) {
+      setStaff(await res.json());
+    } else {
+      toast("Failed to load staff.", "error");
+    }
     setLoading(false);
   }
+
   useEffect(() => { load(); }, []);
 
   // ── Drag handlers ──────────────────────────────────────────────
-  function onDragStart(i: number) { dragIndex.current = i; }
+  function onDragStart(i: number) {
+    dragIndex.current = i;
+  }
 
   function onDragOver(e: React.DragEvent, i: number) {
     e.preventDefault();
-    overIndex.current = i;
     if (dragIndex.current === null || dragIndex.current === i) return;
     const reordered = [...staff];
     const [moved] = reordered.splice(dragIndex.current, 1);
@@ -51,14 +60,16 @@ export default function StaffPage() {
 
   async function onDragEnd() {
     dragIndex.current = null;
-    overIndex.current = null;
     setReordering(true);
-    await fetch("/api/staff", {
+    const res = await fetch("/api/staff", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order: staff.map(s => s.id) }),
     });
     setReordering(false);
+    if (!res.ok) {
+      toast("Failed to save new order.", "error");
+    }
   }
 
   // ── CRUD ──────────────────────────────────────────────────────
@@ -70,15 +81,29 @@ export default function StaffPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: editName.trim(), color_hex: editColor }),
     });
+    const data = await res.json();
     setSaving(false);
-    if (!res.ok) { setError("Failed to save."); return; }
-    setEditId(null); load();
+    if (!res.ok) {
+      setError(data.error ?? "Failed to save.");
+      return;
+    }
+    toast("Staff member updated.", "success");
+    setEditId(null);
+    load();
   }
 
-  async function deleteStaff(id: string, name: string) {
-    if (!confirm(`Deactivate "${name}"? They won't appear in new bookings.`)) return;
-    await fetch(`/api/staff/${id}`, { method: "DELETE" });
-    load();
+  async function handleDelete() {
+    if (!confirmMember) return;
+    setDeletingId(confirmMember.id);
+    setConfirmMember(null);
+    const res = await fetch(`/api/staff/${confirmMember.id}`, { method: "DELETE" });
+    setDeletingId(null);
+    if (res.ok) {
+      toast(`"${confirmMember.name}" deactivated.`, "success");
+      load();
+    } else {
+      toast("Failed to deactivate staff member.", "error");
+    }
   }
 
   async function addStaff() {
@@ -93,9 +118,17 @@ export default function StaffPage() {
         sort_order: staff.length + 1,
       }),
     });
+    const data = await res.json();
     setSaving(false);
-    if (!res.ok) { setError("Failed to add. Name may already exist."); return; }
-    setAdding(false); setNewName(""); setNewColor("#7A9E85"); load();
+    if (!res.ok) {
+      setError(data.error ?? "Failed to add. Name may already exist.");
+      return;
+    }
+    toast("Staff member added.", "success");
+    setAdding(false);
+    setNewName("");
+    setNewColor("#7A9E85");
+    load();
   }
 
   return (
@@ -143,7 +176,10 @@ export default function StaffPage() {
             >
               <Check size={14} />
             </button>
-            <button onClick={() => { setAdding(false); setError(""); }} className="p-2 rounded-lg hover:bg-[var(--cream-3)] transition">
+            <button
+              onClick={() => { setAdding(false); setError(""); }}
+              className="p-2 rounded-lg hover:bg-[var(--cream-3)] transition"
+            >
               <X size={14} className="text-[var(--charcoal-mid)]" />
             </button>
           </div>
@@ -157,8 +193,14 @@ export default function StaffPage() {
           <p className="text-sm text-[var(--charcoal-mid)] py-8 text-center">Loading…</p>
         )}
 
-        {!loading && staff.length === 0 && (
-          <p className="text-sm text-[var(--charcoal-mid)] py-8 text-center">No active staff. Add someone above.</p>
+        {!loading && staff.length === 0 && !adding && (
+          <div className="text-center py-12 text-[var(--charcoal-mid)]">
+            <div className="w-8 h-8 rounded-full bg-[var(--cream-3)] mx-auto mb-3 flex items-center justify-center">
+              <GripVertical size={16} className="opacity-30" />
+            </div>
+            <p className="text-sm font-medium">No active staff yet.</p>
+            <p className="text-xs mt-1">Click &quot;Add Staff&quot; to get started.</p>
+          </div>
         )}
 
         {!loading && staff.map((member, i) => (
@@ -169,9 +211,8 @@ export default function StaffPage() {
             onDragOver={e => onDragOver(e, i)}
             onDragEnd={onDragEnd}
             className={cn(
-              "bg-white border border-[var(--cream-3)] rounded-2xl px-4 py-4 flex items-center gap-3",
-              "transition-shadow",
-              dragIndex.current === i && "opacity-50 shadow-lg"
+              "bg-white border border-[var(--cream-3)] rounded-2xl px-4 py-4 flex items-center gap-3 transition-shadow",
+              deletingId === member.id && "opacity-50 pointer-events-none"
             )}
           >
             {/* Drag handle */}
@@ -206,7 +247,7 @@ export default function StaffPage() {
                   <button
                     onClick={() => saveEdit(member.id)}
                     disabled={saving}
-                    className="p-2 rounded-lg bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white transition"
+                    className="p-2 rounded-lg bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white transition disabled:opacity-50"
                   >
                     <Check size={14} />
                   </button>
@@ -232,8 +273,9 @@ export default function StaffPage() {
                   <Pencil size={13} className="text-[var(--charcoal-mid)]" />
                 </button>
                 <button
-                  onClick={() => deleteStaff(member.id, member.name)}
-                  className="p-2 rounded-lg hover:bg-red-50 transition"
+                  onClick={() => setConfirmMember(member)}
+                  disabled={deletingId === member.id}
+                  className="p-2 rounded-lg hover:bg-red-50 transition disabled:opacity-50"
                 >
                   <X size={13} className="text-red-400" />
                 </button>
@@ -248,6 +290,16 @@ export default function StaffPage() {
           Drag rows to reorder · order is reflected in the schedule grid
         </p>
       )}
+
+      <ConfirmModal
+        open={confirmMember !== null}
+        title="Deactivate Staff Member"
+        message={`Deactivate "${confirmMember?.name}"? They won't appear in new bookings.`}
+        confirmLabel="Deactivate"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmMember(null)}
+      />
     </div>
   );
 }
@@ -261,6 +313,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
           key={c}
           onClick={() => onChange(c)}
           title={c}
+          type="button"
           className={cn(
             "w-6 h-6 rounded-full border-2 transition hover:scale-110",
             value === c ? "border-[var(--charcoal)] scale-110" : "border-transparent"

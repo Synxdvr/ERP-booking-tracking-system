@@ -1,4 +1,5 @@
 "use client";
+import { useMemo, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { format } from "date-fns";
 import { useScheduleStore } from "@/lib/store";
@@ -9,10 +10,13 @@ import BookingModal from "../booking/BookingModal";
 import { Booking, TimeSlot } from "@/types";
 import { checkConflict } from "@/lib/conflict";
 import { CalendarDays, Users, DoorOpen } from "lucide-react";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 export default function DashboardClient() {
   const { selectedDate, bookings, rooms, staff, isLoading, upsertBooking } = useScheduleStore();
   useBookings();
+
+  const [dragConflict, setDragConflict] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -40,8 +44,9 @@ export default function DashboardClient() {
       bookings,
       rooms
     );
+
     if (conflict.hasConflict) {
-      alert(`⚠️ ${conflict.conflictDetail}`);
+      setDragConflict(conflict.conflictDetail ?? "Booking conflict detected.");
       return;
     }
 
@@ -58,9 +63,17 @@ export default function DashboardClient() {
     if (res.ok) upsertBooking(await res.json());
   }
 
-  const activeBookings = bookings.filter(b => b.status !== "cancelled");
-  const roomsInUse     = new Set(activeBookings.map(b => b.room_id)).size;
-  const staffOnDuty    = new Set(bookings.flatMap(b => (b.booking_services ?? []).map(s => s.staff_id))).size;
+  // Memoised derived stats — only recompute when bookings array changes
+  const { activeBookings, roomsInUse, staffOnDuty } = useMemo(() => {
+    const active = bookings.filter(b => b.status !== "cancelled");
+    return {
+      activeBookings: active,
+      roomsInUse:  new Set(active.map(b => b.room_id)).size,
+      staffOnDuty: new Set(
+        bookings.flatMap(b => (b.booking_services ?? []).map(s => s.staff_id))
+      ).size,
+    };
+  }, [bookings]);
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -101,6 +114,16 @@ export default function DashboardClient() {
       </div>
 
       <BookingModal />
+
+      {/* Drag conflict alert — replaces native browser alert() */}
+      <ConfirmModal
+        open={dragConflict !== null}
+        title="Booking Conflict"
+        message={dragConflict ?? ""}
+        confirmLabel="OK"
+        onConfirm={() => setDragConflict(null)}
+        onCancel={() => setDragConflict(null)}
+      />
     </DndContext>
   );
 }

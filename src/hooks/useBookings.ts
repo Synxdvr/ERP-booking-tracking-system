@@ -1,14 +1,25 @@
 "use client";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useScheduleStore } from "@/lib/store";
 import { format } from "date-fns";
 import { Booking, Room, Staff } from "@/types";
 
 export function useBookings() {
-  const { selectedDate, setBookings, setRooms, setStaff, setLoading, upsertBooking, removeBooking } =
-    useScheduleStore();
-  const supabase = createClient();
+  const {
+    selectedDate,
+    setBookings,
+    setRooms,
+    setStaff,
+    setLoading,
+    upsertBooking,
+    removeBooking,
+  } = useScheduleStore();
+
+  // Stable client ref — avoids recreating on every render
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
+
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
   const fetchBookings = useCallback(async () => {
@@ -20,7 +31,7 @@ export function useBookings() {
       .order("booked_slot");
     if (!error && data) setBookings(data as Booking[]);
     setLoading(false);
-  }, [dateStr]);
+  }, [dateStr, setBookings, setLoading, supabase]);
 
   const fetchRooms = useCallback(async () => {
     const { data } = await supabase
@@ -29,7 +40,7 @@ export function useBookings() {
       .eq("is_active", true)
       .order("name");
     if (data) setRooms(data as Room[]);
-  }, []);
+  }, [setRooms, supabase]);
 
   const fetchStaff = useCallback(async () => {
     const { data } = await supabase
@@ -38,19 +49,20 @@ export function useBookings() {
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
     if (data) setStaff(data as Staff[]);
-  }, []);
+  }, [setStaff, supabase]);
 
-  // Initial fetch
+  // Fetch all on initial mount — rooms & staff are date-independent
   useEffect(() => {
-    fetchBookings();
     fetchRooms();
     fetchStaff();
+  }, [fetchRooms, fetchStaff]);
+
+  // Re-fetch bookings whenever the selected date changes
+  useEffect(() => {
+    fetchBookings();
   }, [fetchBookings]);
 
-  useEffect(() => {
-    fetchStaff();
-  }, []);
-
+  // Realtime subscription — scoped to the current date
   useEffect(() => {
     const channel = supabase
       .channel(`bookings:${dateStr}`)
@@ -72,8 +84,10 @@ export function useBookings() {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [dateStr]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [dateStr, supabase, upsertBooking, removeBooking]);
 
   return { refetch: fetchBookings, refetchStaff: fetchStaff };
 }
