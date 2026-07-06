@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { X, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "@/components/ui/Toaster";
 
 export default function BookingModal() {
   const {
@@ -74,6 +75,7 @@ export default function BookingModal() {
 
     if (!res.ok) { setApiError(data.error ?? "Status update failed."); return; }
     upsertBooking(data);
+    toast("Status updated.", "success");
     closeModal();
   }
 
@@ -127,16 +129,18 @@ export default function BookingModal() {
 
     if (!res.ok) { setApiError(data.error ?? "Something went wrong."); return; }
     upsertBooking(data);
+    toast(editingBooking ? "Booking updated." : "Booking created.", "success");
     closeModal();
   }
 
   async function handleDelete() {
     if (!editingBooking) return;
     setDeleting(true);
-    await fetch(`/api/bookings/${editingBooking.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/bookings/${editingBooking.id}`, { method: "DELETE" });
     removeBooking(editingBooking.id);
     setDeleting(false);
     setConfirmDelete(false);
+    if (res.ok) toast("Booking deleted.", "success");
     closeModal();
   }
 

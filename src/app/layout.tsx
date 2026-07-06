@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Toaster } from "@/components/ui/Toaster";
 
 export const metadata: Metadata = {
   title: "S'thetic Systems",
@@ -9,7 +10,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Global toast notifications */}
+        <Toaster />
+      </body>
     </html>
   );
 }
