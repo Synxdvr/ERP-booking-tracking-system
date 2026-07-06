@@ -1,22 +1,31 @@
 "use client";
 import { useMemo, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { format } from "date-fns";
+import { format, isToday } from "date-fns";
 import { useScheduleStore } from "@/lib/store";
 import { useBookings } from "@/hooks/useBookings";
 import ScheduleGrid from "./ScheduleGrid";
 import MiniCalendar from "./MiniCalendar";
 import BookingModal from "../booking/BookingModal";
-import { Booking, TimeSlot } from "@/types";
+import { Booking, TimeSlot, StaffAttendance } from "@/types";
 import { checkConflict } from "@/lib/conflict";
 import { CalendarDays, Users, DoorOpen } from "lucide-react";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { toast } from "@/components/ui/Toaster";
 
 export default function DashboardClient() {
-  const { selectedDate, bookings, rooms, staff, isLoading, upsertBooking } = useScheduleStore();
+  const { selectedDate, bookings, rooms, staff, attendance, isLoading, upsertBooking, upsertAttendance, setAttendance } = useScheduleStore();
   useBookings();
 
   const [dragConflict, setDragConflict] = useState<string | null>(null);
+
+  // State for absent-with-bookings warning
+  const [absentWarning, setAbsentWarning] = useState<{
+    staffId: string;
+    staffName: string;
+    status: "absent" | "leave";
+    bookingCount: number;
+  } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -63,17 +72,76 @@ export default function DashboardClient() {
     if (res.ok) upsertBooking(await res.json());
   }
 
-  // Memoised derived stats — only recompute when bookings array changes
-  const { activeBookings, roomsInUse, staffOnDuty } = useMemo(() => {
+  // ── Attendance actions ─────────────────────────────────────────────────────
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const isAttendanceDay = isToday(selectedDate);
+
+  async function handleCheckIn(staffId: string) {
+    const res = await fetch("/api/attendance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: todayStr, staff_id: staffId }),
+    });
+    if (res.ok) {
+      upsertAttendance(await res.json());
+      toast("Staff checked in.", "success");
+    } else {
+      toast("Failed to check in staff.", "error");
+    }
+  }
+
+  function requestMarkAbsent(staffId: string, status: "absent" | "leave") {
+    const member = staff.find(s => s.id === staffId);
+    if (!member) return;
+    const todayBookings = bookings.filter(b =>
+      b.status !== "cancelled" &&
+      (b.booking_services ?? []).some(s => s.staff_id === staffId)
+    );
+    if (todayBookings.length > 0) {
+      setAbsentWarning({ staffId, staffName: member.name, status, bookingCount: todayBookings.length });
+    } else {
+      doMarkAbsent(staffId, status);
+    }
+  }
+
+  async function doMarkAbsent(staffId: string, status: "absent" | "leave") {
+    const res = await fetch("/api/attendance", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: todayStr, staff_id: staffId, status }),
+    });
+    if (res.ok) {
+      upsertAttendance(await res.json());
+      toast(`Staff marked as ${status === "leave" ? "on leave" : "absent"}.`, "success");
+    } else {
+      toast("Failed to update attendance.", "error");
+    }
+  }
+
+  async function handleUndo(record: StaffAttendance) {
+    const res = await fetch(`/api/attendance/${record.id}`, { method: "DELETE" });
+    if (res.ok) {
+      setAttendance(attendance.filter(a => a.id !== record.id));
+      toast("Attendance cleared.", "success");
+    } else {
+      toast("Failed to clear attendance.", "error");
+    }
+  }
+
+  // ── Derived stats ──────────────────────────────────────────────────────────
+  const { activeBookings, roomsInUse, presentCount } = useMemo(() => {
     const active = bookings.filter(b => b.status !== "cancelled");
+    const presentIds = new Set(
+      attendance.filter(a => a.status === "present").map(a => a.staff_id)
+    );
     return {
       activeBookings: active,
-      roomsInUse:  new Set(active.map(b => b.room_id)).size,
-      staffOnDuty: new Set(
+      roomsInUse: new Set(active.map(b => b.room_id)).size,
+      presentCount: isAttendanceDay ? presentIds.size : new Set(
         bookings.flatMap(b => (b.booking_services ?? []).map(s => s.staff_id))
       ).size,
     };
-  }, [bookings]);
+  }, [bookings, attendance, isAttendanceDay]);
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -88,34 +156,37 @@ export default function DashboardClient() {
           </div>
           <div className="space-y-2">
             <StatCard icon={<CalendarDays size={13}/>} label="Bookings today"  value={activeBookings.length} />
-            <StatCard icon={<Users size={13}/>}        label="Staff on duty"   value={staffOnDuty} />
-            <StatCard icon={<DoorOpen size={13}/>}     label="Rooms in use"    value={roomsInUse} />
+            <StatCard
+              icon={<Users size={13}/>}
+              label={isAttendanceDay ? "Present today" : "Staff on duty"}
+              value={presentCount}
+            />
+            <StatCard icon={<DoorOpen size={13}/>} label="Rooms in use" value={roomsInUse} />
           </div>
         </aside>
 
         {/* Main grid area */}
         <main className="flex-1 overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--cream-3)] bg-white flex-shrink-0">
-            <h1 className="font-serif text-lg text-[var(--charcoal)] font-semibold">
-              Schedule — {format(selectedDate, "EEEE, MMMM d, yyyy")}
-            </h1>
-            <button
-              onClick={() => useScheduleStore.getState().openNewBooking()}
-              className="px-4 py-2 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white text-xs tracking-widest uppercase font-semibold transition"
-            >
-              + New Booking
-            </button>
-          </div>
-
           <div className="flex-1 overflow-auto">
-            <ScheduleGrid bookings={bookings} staff={staff} isLoading={isLoading} />
+            <ScheduleGrid
+              bookings={bookings}
+              staff={staff}
+              attendance={attendance}
+              selectedDate={selectedDate}
+              isLoading={isLoading}
+              onCheckIn={isAttendanceDay ? handleCheckIn : undefined}
+              onMarkAbsent={isAttendanceDay ? (id) => requestMarkAbsent(id, "absent") : undefined}
+              onMarkLeave={isAttendanceDay ? (id) => requestMarkAbsent(id, "leave") : undefined}
+              onMarkDayOff={isAttendanceDay ? (id) => requestMarkAbsent(id, "leave") : undefined}
+              onUndo={isAttendanceDay ? handleUndo : undefined}
+            />
           </div>
         </main>
       </div>
 
       <BookingModal />
 
-      {/* Drag conflict alert — replaces native browser alert() */}
+      {/* Drag conflict alert */}
       <ConfirmModal
         open={dragConflict !== null}
         title="Booking Conflict"
@@ -123,6 +194,24 @@ export default function DashboardClient() {
         confirmLabel="OK"
         onConfirm={() => setDragConflict(null)}
         onCancel={() => setDragConflict(null)}
+      />
+
+      {/* Absent-with-bookings warning */}
+      <ConfirmModal
+        open={absentWarning !== null}
+        title={absentWarning?.status === "leave" ? "Mark On Leave?" : "Mark Absent?"}
+        message={
+          `${absentWarning?.staffName} has ${absentWarning?.bookingCount} active booking${(absentWarning?.bookingCount ?? 0) > 1 ? "s" : ""} today. ` +
+          `Marking them as ${absentWarning?.status === "leave" ? "on leave" : "absent"} will gray out their column but won't cancel their bookings. ` +
+          `You can reassign those bookings by dragging them to another therapist.`
+        }
+        confirmLabel={absentWarning?.status === "leave" ? "Mark On Leave" : "Mark Absent"}
+        danger
+        onConfirm={() => {
+          if (absentWarning) doMarkAbsent(absentWarning.staffId, absentWarning.status);
+          setAbsentWarning(null);
+        }}
+        onCancel={() => setAbsentWarning(null)}
       />
     </DndContext>
   );
