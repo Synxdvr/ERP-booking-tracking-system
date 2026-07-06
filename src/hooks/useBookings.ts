@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useCallback, useRef } from "react";
+import { isToday } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { useScheduleStore } from "@/lib/store";
 import { format } from "date-fns";
-import { Booking, Room, Staff } from "@/types";
+import { Booking, Room, Staff, StaffAttendance } from "@/types";
 
 export function useBookings() {
   const {
@@ -11,6 +12,8 @@ export function useBookings() {
     setBookings,
     setRooms,
     setStaff,
+    setAttendance,
+    upsertAttendance,
     setLoading,
     upsertBooking,
     removeBooking,
@@ -51,16 +54,27 @@ export function useBookings() {
     if (data) setStaff(data as Staff[]);
   }, [setStaff, supabase]);
 
+  // Fetch attendance only for today's date — past/future use static sort_order
+  const fetchAttendance = useCallback(async (dateStr: string) => {
+    if (!isToday(new Date(dateStr + "T00:00:00"))) {
+      setAttendance([]);
+      return;
+    }
+    const res = await fetch(`/api/attendance?date=${dateStr}`);
+    if (res.ok) setAttendance((await res.json()) as StaffAttendance[]);
+  }, [setAttendance]);
+
   // Fetch all on initial mount — rooms & staff are date-independent
   useEffect(() => {
     fetchRooms();
     fetchStaff();
   }, [fetchRooms, fetchStaff]);
 
-  // Re-fetch bookings whenever the selected date changes
+  // Re-fetch bookings + attendance whenever the selected date changes
   useEffect(() => {
     fetchBookings();
-  }, [fetchBookings]);
+    fetchAttendance(dateStr);
+  }, [fetchBookings, fetchAttendance, dateStr]);
 
   // Realtime subscription — scoped to the current date
   useEffect(() => {
@@ -88,6 +102,32 @@ export function useBookings() {
       supabase.removeChannel(channel);
     };
   }, [dateStr, supabase, upsertBooking, removeBooking]);
+
+  // Realtime subscription for attendance (today only)
+  useEffect(() => {
+    if (!isToday(new Date(dateStr + "T00:00:00"))) return;
+
+    const channel = supabase
+      .channel(`attendance:${dateStr}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "staff_attendance", filter: `date=eq.${dateStr}` },
+        async (payload) => {
+          if (payload.eventType === "DELETE") {
+            // Remove from store by re-fetching (deleted row has no new state)
+            const res = await fetch(`/api/attendance?date=${dateStr}`);
+            if (res.ok) setAttendance((await res.json()) as StaffAttendance[]);
+          } else {
+            upsertAttendance(payload.new as StaffAttendance);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [dateStr, supabase, setAttendance, upsertAttendance]);
 
   return { refetch: fetchBookings, refetchStaff: fetchStaff };
 }
