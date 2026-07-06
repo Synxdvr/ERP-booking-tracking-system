@@ -1,11 +1,12 @@
 import { create } from "zustand";
-import { Booking, Room, Staff } from "@/types";
+import { Booking, Room, Staff, StaffAttendance } from "@/types";
 
 interface ScheduleStore {
   selectedDate: Date;
   bookings: Booking[];
   rooms: Room[];
   staff: Staff[];
+  attendance: StaffAttendance[];
   isLoading: boolean;
   modalOpen: boolean;
   editingBooking: Booking | null;
@@ -15,6 +16,8 @@ interface ScheduleStore {
   setBookings: (bookings: Booking[]) => void;
   setRooms: (rooms: Room[]) => void;
   setStaff: (staff: Staff[]) => void;
+  setAttendance: (attendance: StaffAttendance[]) => void;
+  upsertAttendance: (record: StaffAttendance) => void;
   setLoading: (v: boolean) => void;
   openNewBooking: (slot?: string, staff_id?: string) => void;
   openEditBooking: (booking: Booking) => void;
@@ -28,6 +31,7 @@ export const useScheduleStore = create<ScheduleStore>((set) => ({
   bookings: [],
   rooms: [],
   staff: [],
+  attendance: [],
   isLoading: false,
   modalOpen: false,
   editingBooking: null,
@@ -37,6 +41,13 @@ export const useScheduleStore = create<ScheduleStore>((set) => ({
   setBookings:     (bookings) => set({ bookings }),
   setRooms:        (rooms) => set({ rooms }),
   setStaff:        (staff) => set({ staff }),
+  setAttendance:   (attendance) => set({ attendance }),
+  upsertAttendance: (record) =>
+    set((s) => ({
+      attendance: s.attendance.some((a) => a.id === record.id)
+        ? s.attendance.map((a) => (a.id === record.id ? record : a))
+        : [...s.attendance, record],
+    })),
   setLoading:      (v) => set({ isLoading: v }),
 
   openNewBooking: (slot, staff_id) =>
