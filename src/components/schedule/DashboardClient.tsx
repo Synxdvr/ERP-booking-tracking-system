@@ -129,13 +129,13 @@ export default function DashboardClient() {
   }
 
   // ── Derived stats ──────────────────────────────────────────────────────────
-  const { activeBookings, roomsInUse, presentCount } = useMemo(() => {
+  const { bookingsToday, roomsInUse, presentCount } = useMemo(() => {
     const active = bookings.filter(b => b.status !== "cancelled");
     const presentIds = new Set(
       attendance.filter(a => a.status === "present").map(a => a.staff_id)
     );
     return {
-      activeBookings: active,
+      bookingsToday: new Set(active.map(b => b.client_name.trim().toLowerCase())).size,
       roomsInUse: new Set(active.map(b => b.room_id)).size,
       presentCount: isAttendanceDay ? presentIds.size : new Set(
         bookings.flatMap(b => (b.booking_services ?? []).map(s => s.staff_id))
@@ -155,7 +155,7 @@ export default function DashboardClient() {
             <p className="text-xs text-[var(--charcoal-mid)] font-medium">{format(selectedDate, "MMMM d, yyyy")}</p>
           </div>
           <div className="space-y-2">
-            <StatCard icon={<CalendarDays size={13}/>} label="Bookings today"  value={activeBookings.length} />
+            <StatCard icon={<CalendarDays size={13}/>} label="Bookings today"  value={bookingsToday} />
             <StatCard
               icon={<Users size={13}/>}
               label={isAttendanceDay ? "Present today" : "Staff on duty"}
