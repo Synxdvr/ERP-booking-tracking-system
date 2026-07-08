@@ -76,24 +76,31 @@ export function useBookings() {
     fetchAttendance(dateStr);
   }, [fetchBookings, fetchAttendance, dateStr]);
 
-  // Realtime subscription — scoped to the current date
+  // Realtime subscription — listens to ALL booking changes, filters client-side.
+  // We intentionally omit the server-side `filter` here because pg_cron bulk
+  // UPDATEs are not reliably routed through filtered channels unless the table
+  // has REPLICA IDENTITY FULL set. Client-side filtering is always correct.
   useEffect(() => {
     const channel = supabase
-      .channel(`bookings:${dateStr}`)
+      .channel("bookings:all")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "bookings", filter: `date=eq.${dateStr}` },
+        { event: "*", schema: "public", table: "bookings" },
         async (payload) => {
           if (payload.eventType === "DELETE") {
             removeBooking(payload.old.id as string);
-          } else {
-            const { data } = await supabase
-              .from("bookings")
-              .select("*, room:rooms(*), booking_services(*, staff:staff(*))")
-              .eq("id", (payload.new as { id: string }).id)
-              .single();
-            if (data) upsertBooking(data as Booking);
+            return;
           }
+          const row = payload.new as { id: string; date: string };
+          // Only update the store when the changed booking belongs to the
+          // currently viewed date — ignore other dates silently.
+          if (row.date !== dateStr) return;
+          const { data } = await supabase
+            .from("bookings")
+            .select("*, room:rooms(*), booking_services(*, staff:staff(*))")
+            .eq("id", row.id)
+            .single();
+          if (data) upsertBooking(data as Booking);
         }
       )
       .subscribe();
