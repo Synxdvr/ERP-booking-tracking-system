@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Staff } from "@/types";
 import { Plus, Pencil, X, Check, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { toast } from "@/components/ui/Toaster";
+import { useScheduleStore } from "@/lib/store";
 
 const PRESET_COLORS = [
   "#BE6B7A","#7A9E85","#6B8EB8","#B8866B",
@@ -12,36 +13,136 @@ const PRESET_COLORS = [
   "#8EB86B","#D4AF37","#6B9EB8","#B87A6B",
 ];
 
-export default function StaffPage() {
-  const [staff,        setStaff]        = useState<Staff[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [editId,       setEditId]       = useState<string | null>(null);
-  const [editName,     setEditName]     = useState("");
-  const [editColor,    setEditColor]    = useState("#D4AF37");
-  const [adding,       setAdding]       = useState(false);
-  const [newName,      setNewName]      = useState("");
-  const [newColor,     setNewColor]     = useState("#7A9E85");
-  const [saving,       setSaving]       = useState(false);
-  const [reordering,   setReordering]   = useState(false);
-  const [deletingId,   setDeletingId]   = useState<string | null>(null);
-  const [confirmMember, setConfirmMember] = useState<Staff | null>(null);
-  const [error,        setError]        = useState("");
+// ─── Custom hook: list + cold-load ───────────────────────────────────────────
 
-  // Drag state
-  const dragIndex = useRef<number | null>(null);
+function useStaffList() {
+  const staff        = useScheduleStore((s) => s.staff);
+  const setStaffList = useScheduleStore((s) => s.setStaff);
+  const [loading, setLoading] = useState(staff.length === 0);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/staff");
     if (res.ok) {
-      setStaff(await res.json());
+      setStaffList(await res.json());
     } else {
       toast("Failed to load staff.", "error");
     }
     setLoading(false);
-  }
+  }, [setStaffList]);
 
-  useEffect(() => { load(); }, []);
+  // Only fetch on first mount when the store is empty
+  useEffect(() => {
+    if (staff.length === 0) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return { staff, setStaffList, loading };
+}
+
+// ─── Custom hook: edit a staff member ────────────────────────────────────────
+
+function useStaffEdit() {
+  const upsertStaff = useScheduleStore((s) => s.upsertStaff);
+  const [editId,    setEditId]    = useState<string | null>(null);
+  const [editName,  setEditName]  = useState("");
+  const [editColor, setEditColor] = useState("#D4AF37");
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState("");
+
+  const startEdit = useCallback((member: Staff) => {
+    setEditId(member.id);
+    setEditName(member.name);
+    setEditColor(member.color_hex);
+    setError("");
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditId(null);
+    setError("");
+  }, []);
+
+  const saveEdit = useCallback(async (id: string) => {
+    if (!editName.trim()) { setError("Name is required."); return; }
+    setSaving(true);
+    const res = await fetch(`/api/staff/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editName.trim(), color_hex: editColor }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { setError(data.error ?? "Failed to save."); return; }
+    toast("Staff member updated.", "success");
+    upsertStaff(data);
+    setEditId(null);
+  }, [editName, editColor, upsertStaff]);
+
+  return {
+    editId, editName, editColor, saving, error,
+    setEditName, setEditColor,
+    startEdit, cancelEdit, saveEdit,
+  };
+}
+
+// ─── Custom hook: add a staff member ─────────────────────────────────────────
+
+function useStaffAdd(staffCount: number) {
+  const upsertStaff = useScheduleStore((s) => s.upsertStaff);
+  const [adding,   setAdding]   = useState(false);
+  const [newName,  setNewName]  = useState("");
+  const [newColor, setNewColor] = useState("#7A9E85");
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState("");
+
+  const openAdd   = useCallback(() => { setAdding(true);  setError(""); }, []);
+  const cancelAdd = useCallback(() => { setAdding(false); setError(""); }, []);
+
+  const addStaff = useCallback(async () => {
+    if (!newName.trim()) { setError("Name is required."); return; }
+    setSaving(true);
+    const res = await fetch("/api/staff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newName.trim().toUpperCase(),
+        color_hex: newColor,
+        sort_order: staffCount + 1,
+      }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { setError(data.error ?? "Failed to add. Name may already exist."); return; }
+    toast("Staff member added.", "success");
+    upsertStaff(data);
+    setAdding(false);
+    setNewName("");
+    setNewColor("#7A9E85");
+  }, [newName, newColor, staffCount, upsertStaff]);
+
+  return {
+    adding, newName, newColor, saving, error,
+    setNewName, setNewColor,
+    openAdd, cancelAdd, addStaff,
+  };
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function StaffPage() {
+  const removeStaff  = useScheduleStore((s) => s.removeStaff);
+
+  const { staff, setStaffList, loading } = useStaffList();
+  const edit = useStaffEdit();
+  const add  = useStaffAdd(staff.length);
+
+  const [reordering,    setReordering]    = useState(false);
+  const [deletingId,    setDeletingId]    = useState<string | null>(null);
+  const [confirmMember, setConfirmMember] = useState<Staff | null>(null);
+
+  const dragIndex = useRef<number | null>(null);
+
+  const error = edit.editId ? edit.error : add.error;
 
   // ── Drag handlers ──────────────────────────────────────────────
   function onDragStart(i: number) {
@@ -55,7 +156,7 @@ export default function StaffPage() {
     const [moved] = reordered.splice(dragIndex.current, 1);
     reordered.splice(i, 0, moved);
     dragIndex.current = i;
-    setStaff(reordered);
+    setStaffList(reordered);
   }
 
   async function onDragEnd() {
@@ -72,63 +173,20 @@ export default function StaffPage() {
     }
   }
 
-  // ── CRUD ──────────────────────────────────────────────────────
-  async function saveEdit(id: string) {
-    if (!editName.trim()) { setError("Name is required."); return; }
-    setSaving(true);
-    const res = await fetch(`/api/staff/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName.trim(), color_hex: editColor }),
-    });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setError(data.error ?? "Failed to save.");
-      return;
-    }
-    toast("Staff member updated.", "success");
-    setEditId(null);
-    load();
-  }
-
+  // ── Delete ─────────────────────────────────────────────────────
   async function handleDelete() {
     if (!confirmMember) return;
-    setDeletingId(confirmMember.id);
+    const target = confirmMember;
+    setDeletingId(target.id);
     setConfirmMember(null);
-    const res = await fetch(`/api/staff/${confirmMember.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/staff/${target.id}`, { method: "DELETE" });
     setDeletingId(null);
     if (res.ok) {
-      toast(`"${confirmMember.name}" deactivated.`, "success");
-      load();
+      toast(`"${target.name}" deactivated.`, "success");
+      removeStaff(target.id);
     } else {
       toast("Failed to deactivate staff member.", "error");
     }
-  }
-
-  async function addStaff() {
-    if (!newName.trim()) { setError("Name is required."); return; }
-    setSaving(true);
-    const res = await fetch("/api/staff", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newName.trim().toUpperCase(),
-        color_hex: newColor,
-        sort_order: staff.length + 1,
-      }),
-    });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setError(data.error ?? "Failed to add. Name may already exist.");
-      return;
-    }
-    toast("Staff member added.", "success");
-    setAdding(false);
-    setNewName("");
-    setNewColor("#7A9E85");
-    load();
   }
 
   return (
@@ -141,7 +199,7 @@ export default function StaffPage() {
           </p>
         </div>
         <button
-          onClick={() => { setAdding(true); setError(""); }}
+          onClick={add.openAdd}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white text-xs tracking-widest uppercase font-semibold transition"
         >
           <Plus size={14} /> Add Staff
@@ -157,33 +215,33 @@ export default function StaffPage() {
       )}
 
       {/* Add form */}
-      {adding && (
+      {add.adding && (
         <div className="mb-4 bg-white border border-[var(--gold)] rounded-2xl p-4 space-y-3 animate-slide-up">
           <div className="flex items-center gap-3">
             <input
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
+              value={add.newName}
+              onChange={e => add.setNewName(e.target.value)}
               placeholder="Staff name (e.g. MITCH)"
               autoFocus
               maxLength={50}
               className={inputCls + " flex-1"}
-              onKeyDown={e => e.key === "Enter" && addStaff()}
+              onKeyDown={e => e.key === "Enter" && add.addStaff()}
             />
             <button
-              onClick={addStaff}
-              disabled={saving}
+              onClick={add.addStaff}
+              disabled={add.saving}
               className="p-2 rounded-lg bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white transition disabled:opacity-50"
             >
               <Check size={14} />
             </button>
             <button
-              onClick={() => { setAdding(false); setError(""); }}
+              onClick={add.cancelAdd}
               className="p-2 rounded-lg hover:bg-[var(--cream-3)] transition"
             >
               <X size={14} className="text-[var(--charcoal-mid)]" />
             </button>
           </div>
-          <ColorPicker value={newColor} onChange={setNewColor} />
+          <ColorPicker value={add.newColor} onChange={add.setNewColor} />
         </div>
       )}
 
@@ -193,7 +251,7 @@ export default function StaffPage() {
           <p className="text-sm text-[var(--charcoal-mid)] py-8 text-center">Loading…</p>
         )}
 
-        {!loading && staff.length === 0 && !adding && (
+        {!loading && staff.length === 0 && !add.adding && (
           <div className="text-center py-12 text-[var(--charcoal-mid)]">
             <div className="w-8 h-8 rounded-full bg-[var(--cream-3)] mx-auto mb-3 flex items-center justify-center">
               <GripVertical size={16} className="opacity-30" />
@@ -233,32 +291,32 @@ export default function StaffPage() {
               {member.name[0]}
             </div>
 
-            {editId === member.id ? (
+            {edit.editId === member.id ? (
               <div className="flex-1 space-y-2">
                 <div className="flex items-center gap-3">
                   <input
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
+                    value={edit.editName}
+                    onChange={e => edit.setEditName(e.target.value)}
                     autoFocus
                     maxLength={50}
                     className={inputCls + " flex-1"}
-                    onKeyDown={e => e.key === "Enter" && saveEdit(member.id)}
+                    onKeyDown={e => e.key === "Enter" && edit.saveEdit(member.id)}
                   />
                   <button
-                    onClick={() => saveEdit(member.id)}
-                    disabled={saving}
+                    onClick={() => edit.saveEdit(member.id)}
+                    disabled={edit.saving}
                     className="p-2 rounded-lg bg-[var(--gold)] hover:bg-[var(--gold-dark)] text-white transition disabled:opacity-50"
                   >
                     <Check size={14} />
                   </button>
                   <button
-                    onClick={() => { setEditId(null); setError(""); }}
+                    onClick={edit.cancelEdit}
                     className="p-2 rounded-lg hover:bg-[var(--cream-3)] transition"
                   >
                     <X size={14} className="text-[var(--charcoal-mid)]" />
                   </button>
                 </div>
-                <ColorPicker value={editColor} onChange={setEditColor} />
+                <ColorPicker value={edit.editColor} onChange={edit.setEditColor} />
               </div>
             ) : (
               <>
@@ -267,7 +325,7 @@ export default function StaffPage() {
                   <p className="text-[10px] text-[var(--charcoal-mid)] font-medium">{member.color_hex}</p>
                 </div>
                 <button
-                  onClick={() => { setEditId(member.id); setEditName(member.name); setEditColor(member.color_hex); setError(""); }}
+                  onClick={() => edit.startEdit(member)}
                   className="p-2 rounded-lg hover:bg-[var(--cream-3)] transition"
                 >
                   <Pencil size={13} className="text-[var(--charcoal-mid)]" />
