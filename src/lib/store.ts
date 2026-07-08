@@ -16,6 +16,10 @@ interface ScheduleStore {
   setBookings: (bookings: Booking[]) => void;
   setRooms: (rooms: Room[]) => void;
   setStaff: (staff: Staff[]) => void;
+  upsertRoom: (room: Room) => void;
+  removeRoom: (id: string) => void;
+  upsertStaff: (member: Staff) => void;
+  removeStaff: (id: string) => void;
   setAttendance: (attendance: StaffAttendance[]) => void;
   upsertAttendance: (record: StaffAttendance) => void;
   setLoading: (v: boolean) => void;
@@ -41,6 +45,22 @@ export const useScheduleStore = create<ScheduleStore>((set) => ({
   setBookings:     (bookings) => set({ bookings }),
   setRooms:        (rooms) => set({ rooms }),
   setStaff:        (staff) => set({ staff }),
+  upsertRoom: (room) =>
+    set((s) => ({
+      rooms: s.rooms.some((r) => r.id === room.id)
+        ? s.rooms.map((r) => (r.id === room.id ? room : r))
+        : [...s.rooms, room],
+    })),
+  removeRoom: (id) =>
+    set((s) => ({ rooms: s.rooms.filter((r) => r.id !== id) })),
+  upsertStaff: (member) =>
+    set((s) => ({
+      staff: s.staff.some((m) => m.id === member.id)
+        ? s.staff.map((m) => (m.id === member.id ? member : m))
+        : [...s.staff, member],
+    })),
+  removeStaff: (id) =>
+    set((s) => ({ staff: s.staff.filter((m) => m.id !== id) })),
   setAttendance:   (attendance) => set({ attendance }),
   upsertAttendance: (record) =>
     set((s) => ({
